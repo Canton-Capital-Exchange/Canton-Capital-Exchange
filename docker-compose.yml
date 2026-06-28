@@ -1,0 +1,29 @@
+services:
+  # dpm sandbox binds the JSON Ledger API to 127.0.0.1 only (by design --
+  # it's meant to never be reachable except locally), so the frontend
+  # container shares this container's network namespace instead of talking
+  # to it over the regular bridge network. Both services' published ports
+  # are declared here because a container using network_mode: "service:canton"
+  # has no network stack of its own to publish from.
+  canton:
+    build:
+      context: ./daml
+    ports:
+      - "7575:7575"
+      - "8080:80"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:7575/v2/state/ledger-end"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+    network_mode: "service:canton"
+    depends_on:
+      canton:
+        condition: service_healthy
+    environment:
+      CANTON_UPSTREAM: 127.0.0.1:7575

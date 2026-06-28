@@ -1,0 +1,4 @@
+**/.daml
+**/*.dar
+multi-package.yaml
+test

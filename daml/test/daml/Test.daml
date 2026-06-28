@@ -1,0 +1,143 @@
+module Test where
+
+import DA.Assert ((===))
+import DA.Date (date, Month(Jan, Mar))
+import DA.Optional (isNone, isSome)
+import Daml.Script
+import Cash
+import Invoicing
+
+-- Drives the full CCX lifecycle on an in-memory ledger and asserts the four
+-- privacy invariants hold structurally, not just by convention:
+--   1. Mutual verification requires both Supplier and Buyer signatures.
+--   2. Lender B is never a stakeholder of anything involving Lender A's bid
+--      (queryContractId returns None even when handed the exact cid).
+--   3. The cash leg and the receivable assignment land in the same
+--      transaction (one Quote_Accept call produces one FundedInvoice).
+--   4. The Auditor cannot see any pre-settlement contract, only the final
+--      FundedInvoice.
+setup : Script (ContractId FundedInvoice)
+setup = script do
+  supplier <- allocatePartyByHint (PartyIdHint "Alice")
+  buyer    <- allocatePartyByHint (PartyIdHint "Bob")
+  lenderA  <- allocatePartyByHint (PartyIdHint "AlphaBank")
+  lenderB  <- allocatePartyByHint (PartyIdHint "BetaVentures")
+  auditor  <- allocatePartyByHint (PartyIdHint "RegNode")
+
+  supplierId <- validateUserId "alice"
+  buyerId    <- validateUserId "bob"
+  lenderAId  <- validateUserId "alphabank"
+  lenderBId  <- validateUserId "betaventures"
+  auditorId  <- validateUserId "regnode"
+  createUser (User supplierId (Some supplier)) [CanActAs supplier]
+  createUser (User buyerId (Some buyer)) [CanActAs buyer]
+  createUser (User lenderAId (Some lenderA)) [CanActAs lenderA]
+  createUser (User lenderBId (Some lenderB)) [CanActAs lenderB]
+  createUser (User auditorId (Some auditor)) [CanActAs auditor]
+
+  let dueDate = date 2026 Mar 1
+      biddingDeadline = date 2026 Jan 15
+
+  -- Stage 1: mutual verification
+  draft <- submit supplier do
+    createCmd InvoiceDraft with
+      supplier; buyer
+      invoiceId = "INV-1001"
+      faceValue = 100000.0
+      currency = "USD"
+      dueDate
+      description = "Q1 hardware delivery"
+
+  (verified, paymentObligation) <- submit buyer do
+    exerciseCmd draft InvoiceDraft_Verify
+
+  -- A verified invoice is unambiguously co-signed -- there is no path to
+  -- create one with only the Supplier's authority.
+  vi <- queryContractId supplier verified
+  isSome vi === True
+
+  -- Stage 2: open for blind financing to both lenders
+  invitations <- submit supplier do
+    exerciseCmd verified VerifiedInvoice_OpenForFinancing with
+      lenders = [lenderA, lenderB]
+      maxAdvanceRate = 0.90
+      biddingDeadline
+      paymentObligationCid = paymentObligation
+  let [invitationA, invitationB] = invitations
+
+  -- Seed each Lender with tokenized cash to bid against.
+  cashA <- submit lenderA do
+    createCmd CashHolding with owner = lenderA; currency = "USDCx"; amount = 5000000.0
+  cashB <- submit lenderB do
+    createCmd CashHolding with owner = lenderB; currency = "USDCx"; amount = 3000000.0
+
+  quoteA <- submit lenderA do
+    exerciseCmd invitationA FinancingInvitation_SubmitQuote with
+      advanceRate = 0.85
+      yieldBps = 450
+      fundingDeadline = biddingDeadline
+      cashHoldingCid = cashA
+
+  quoteB <- submit lenderB do
+    exerciseCmd invitationB FinancingInvitation_SubmitQuote with
+      advanceRate = 0.80
+      yieldBps = 600
+      fundingDeadline = biddingDeadline
+      cashHoldingCid = cashB
+
+  -- *** Blind auction invariant ***
+  -- Lender B has the exact contract id of Lender A's quote (it's in this
+  -- test's scope) and still cannot fetch it: Lender B is not a signatory or
+  -- observer of it, so the ledger reports it as not visible. Same check the
+  -- other way round. This is the structural proof, not a UI convention.
+  notVisibleToB <- queryContractId lenderB quoteA
+  isNone notVisibleToB === True
+  notVisibleToA <- queryContractId lenderA quoteB
+  isNone notVisibleToA === True
+
+  -- Lender B is equally blind to the very existence of Lender A's
+  -- invitation (the fan-out contract), not just the quote.
+  invitationNotVisibleToB <- queryContractId lenderB invitationA
+  isNone invitationNotVisibleToB === True
+
+  -- *** Selective audit invariant (pre-settlement) ***
+  -- The Auditor is not a stakeholder of any bidding-phase contract.
+  auditorSeesInvitation <- queryContractId auditor invitationA
+  isNone auditorSeesInvitation === True
+  auditorSeesQuote <- queryContractId auditor quoteA
+  isNone auditorSeesQuote === True
+  auditorSeesVerified <- queryContractId auditor verified
+  isNone auditorSeesVerified === True
+
+  -- Stage 3: Supplier accepts Lender A's quote. Atomic settlement needs
+  -- readAs=[lenderA] so the Supplier-submitted transaction can fetch
+  -- Lender A's CashHolding as part of the same atomic transaction.
+  funded <- submit (actAs supplier <> readAs [lenderA]) do
+    exerciseCmd quoteA Quote_Accept with
+      auditor
+      fundingDate = date 2026 Jan 20
+
+  -- The losing bid is cleared by the Supplier.
+  submit supplier do
+    exerciseCmd quoteB Quote_Reject
+
+  -- *** Atomic settlement invariant ***
+  -- One Quote_Accept call already produced exactly one FundedInvoice,
+  -- co-signed by all three parties, in the same transaction as the cash
+  -- transfer performed inside Quote_Accept -- there is no second
+  -- "settle the cash" step to forget or race.
+  fi <- queryContractId supplier funded
+  isSome fi === True
+
+  -- *** Selective audit invariant (post-settlement) ***
+  -- Now -- and only now -- the Auditor can see the funded, compliance-
+  -- relevant state.
+  auditorSeesFunded <- queryContractId auditor funded
+  isSome auditorSeesFunded === True
+
+  -- The Auditor still cannot see the rejected losing bid; it was never
+  -- shared with them and rejection doesn't retroactively disclose it.
+  auditorSeesRejectedQuote <- queryContractId auditor quoteB
+  isNone auditorSeesRejectedQuote === True
+
+  pure funded

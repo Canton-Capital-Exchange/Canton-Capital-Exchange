@@ -1,0 +1,313 @@
+module Invoicing where
+
+import DA.Action (void, when)
+import Cash
+
+-- ============================================================
+-- Canton Capital Exchange (CCX)
+-- Privacy-preserving invoice factoring marketplace.
+--
+-- Lifecycle:
+--   InvoiceDraft        -- supplier's unverified claim
+--     -> VerifiedInvoice + PaymentObligation   (mutual verification)
+--       -> FinancingInvitation (one per lender, fanned out)
+--         -> Quote (one per lender, private to supplier+lender)
+--           -> FundedInvoice (final, auditor-visible)
+--
+-- Generic pattern underneath this domain: a blind sealed-bid auction.
+-- FinancingInvitation/Quote (Stage 2 below) are a concrete instance of a
+-- reusable two-template shape that has nothing invoice-specific in its
+-- privacy mechanics:
+--
+--   Invitation : signatory <listing owner(s)>, observer <one invitee>
+--     -- fanned out once per invitee from the listing, so invitees never
+--        see each other or know how many others were invited.
+--   Bid : signatory <invitee>, observer <listing owner>
+--     -- created by the invitee from their own Invitation; signed solely
+--        by them, so no other invitee is ever a stakeholder of it.
+--
+-- The privacy guarantee (bidders blind to each other) falls out of Daml's
+-- stakeholder model purely from that shape -- it has nothing to do with
+-- "invoice" or "lender". Repointed at a different payload, the same two
+-- templates are: a sealed-bid OTC quote request, a blind M&A bid process,
+-- a reinsurance placement, a private RFQ to multiple suppliers, a repo
+-- rate auction. What *would* change moving to one of those: the payload
+-- fields on Invitation/Bid (advanceRate/yieldBps becomes price/spread/
+-- whatever the domain's term is), and whether accepting a bid needs a
+-- nested-authority settlement step like Quote_Accept's below -- that part
+-- is specific to having a third party (the Buyer) whose consent is needed
+-- to reassign who gets paid; a plain two-sided auction wouldn't need it.
+-- ============================================================
+
+-- ------------------------------------------------------------
+-- Stage 1: Mutual verification
+-- ------------------------------------------------------------
+
+-- The Supplier's claim. Only the Supplier has signed off so far, so this
+-- contract alone is not enough to raise financing against.
+template InvoiceDraft
+  with
+    supplier    : Party
+    buyer       : Party
+    invoiceId   : Text
+    faceValue   : Decimal
+    currency    : Text
+    dueDate     : Date
+    description : Text
+  where
+    signatory supplier
+    observer buyer
+    ensure faceValue > 0.0
+
+    choice InvoiceDraft_Withdraw : ()
+      controller supplier
+      do pure ()
+
+    -- The Buyer's countersignature is what makes the invoice eligible for
+    -- the market. This choice is controlled by the Buyer but exercised on a
+    -- contract signed only by the Supplier, so the authorizing parties for
+    -- the whole choice body are {buyer, supplier} -- both creates below
+    -- carry the joint signature in a single atomic step. Neither party can
+    -- forge the other's consent, and the draft is consumed, so the same
+    -- claim can never be independently re-verified into two competing
+    -- VerifiedInvoice contracts (no double-financing of one receivable).
+    choice InvoiceDraft_Verify : (ContractId VerifiedInvoice, ContractId PaymentObligation)
+      controller buyer
+      do
+        verified <- create VerifiedInvoice with
+          supplier; buyer; invoiceId; faceValue; currency; dueDate; description
+        obligation <- create PaymentObligation with
+          buyer; supplier; invoiceId; faceValue; currency; dueDate; payee = supplier
+        pure (verified, obligation)
+
+-- The Buyer's binding promise to pay `payee` (initially the Supplier).
+-- Deliberately kept as its own contract, separate from VerifiedInvoice,
+-- specifically so its {buyer, supplier} signature can be pulled into the
+-- settlement transaction later via a nested exercise -- see
+-- PaymentObligation_Settle below, and the comment on Quote_Accept.
+template PaymentObligation
+  with
+    buyer     : Party
+    supplier  : Party
+    invoiceId : Text
+    faceValue : Decimal
+    currency  : Text
+    dueDate   : Date
+    payee     : Party
+  where
+    signatory buyer, supplier
+    observer payee
+
+    -- Authority for a nested exercise is computed fresh from *this*
+    -- choice's own controllers and PaymentObligation's own signatories --
+    -- it does not automatically inherit the full ambient authority of the
+    -- outer Quote_Accept body that invokes it. `lender` is therefore listed
+    -- as a controller here too: at the call site (inside Quote_Accept,
+    -- where Quote's signatory already makes `lender` an authorizer of the
+    -- surrounding transaction) that authority is available to spend on this
+    -- nested exercise, which is exactly what lets FundedInvoice below be
+    -- co-signed by all three parties in one atomic transaction.
+    choice PaymentObligation_Settle : ContractId FundedInvoice
+      with
+        lender        : Party
+        auditor       : Party
+        advanceRate   : Decimal
+        advanceAmount : Decimal
+        yieldBps      : Int
+        fundingDate   : Date
+      controller supplier, lender
+      do
+        create FundedInvoice with
+          supplier; buyer; lender; auditor
+          invoiceId; faceValue; currency; dueDate
+          advanceRate; advanceAmount; yieldBps; fundingDate
+
+template VerifiedInvoice
+  with
+    supplier    : Party
+    buyer       : Party
+    invoiceId   : Text
+    faceValue   : Decimal
+    currency    : Text
+    dueDate     : Date
+    description : Text
+  where
+    signatory supplier, buyer
+
+    -- Opens the invoice to a hand-picked set of Lenders. This creates one
+    -- *separate* FinancingInvitation per Lender, each with exactly one
+    -- Lender as observer. No contract in this system ever lists more than
+    -- one Lender as a stakeholder, so Lender B is never even a witness to
+    -- the fact that Lender A was invited, let alone to any bid Lender A
+    -- might submit. That is the blind-auction invariant, enforced by
+    -- Canton's stakeholder-based privacy model rather than by hiding fields
+    -- in a UI.
+    choice VerifiedInvoice_OpenForFinancing : [ContractId FinancingInvitation]
+      with
+        lenders               : [Party]
+        maxAdvanceRate        : Decimal
+        biddingDeadline       : Date
+        paymentObligationCid  : ContractId PaymentObligation
+      controller supplier
+      do
+        forA lenders $ \lender ->
+          create FinancingInvitation with
+            supplier; buyer; lender
+            invoiceId; faceValue; currency; dueDate; description
+            maxAdvanceRate; biddingDeadline; paymentObligationCid
+
+-- ------------------------------------------------------------
+-- Stage 2: Blind auction
+--
+-- FinancingInvitation/Quote below are the concrete invoice-financing
+-- instance of the generic Invitation/Bid shape described in the module
+-- header -- see that comment for what's reusable as-is vs. what's
+-- domain-specific.
+-- ------------------------------------------------------------
+
+template FinancingInvitation
+  with
+    supplier              : Party
+    buyer                 : Party
+    lender                : Party
+    invoiceId             : Text
+    faceValue             : Decimal
+    currency              : Text
+    dueDate               : Date
+    description           : Text
+    maxAdvanceRate        : Decimal
+    biddingDeadline       : Date
+    paymentObligationCid  : ContractId PaymentObligation
+  where
+    signatory supplier, buyer
+    observer lender
+
+    choice FinancingInvitation_Decline : ()
+      controller lender
+      do pure ()
+
+    -- The Lender's private quote. Signed solely by the Lender, observed
+    -- solely by the Supplier -- this is the blind-bid contract. No other
+    -- Lender is a signatory or observer of it, so it is structurally
+    -- invisible to them; the Supplier sees every quote submitted against
+    -- their invoice (they're observer on each one), but each Lender only
+    -- ever sees their own.
+    choice FinancingInvitation_SubmitQuote : ContractId Quote
+      with
+        advanceRate     : Decimal
+        yieldBps        : Int
+        fundingDeadline : Date
+        cashHoldingCid  : ContractId CashHolding
+      controller lender
+      do
+        assertMsg "advance rate must be positive and not exceed the invitation's cap"
+          (advanceRate > 0.0 && advanceRate <= maxAdvanceRate)
+        create Quote with
+          supplier; buyer; lender
+          invoiceId; faceValue; currency; dueDate
+          advanceRate; yieldBps; fundingDeadline
+          cashHoldingCid; paymentObligationCid
+
+template Quote
+  with
+    supplier              : Party
+    buyer                 : Party
+    lender                : Party
+    invoiceId             : Text
+    faceValue             : Decimal
+    currency              : Text
+    dueDate               : Date
+    advanceRate           : Decimal
+    yieldBps              : Int
+    fundingDeadline       : Date
+    cashHoldingCid        : ContractId CashHolding
+    paymentObligationCid  : ContractId PaymentObligation
+  where
+    signatory lender
+    observer supplier
+
+    -- Lets the Supplier clear away non-winning quotes once a different
+    -- Lender's offer has been accepted. Authorized purely by the Supplier
+    -- being controller on this choice over a contract they're already an
+    -- observer of; it does not require the losing Lender's consent to
+    -- dismiss a quote that was never binding until accepted.
+    choice Quote_Reject : ()
+      controller supplier
+      do pure ()
+
+    -- Atomic settlement. Exercised by the Supplier alone, but the ambient
+    -- authority for this choice body is {supplier} unioned with the
+    -- signatories of *this* contract, i.e. {supplier, lender}. That is
+    -- enough to move the cash leg (archiving the Lender's CashHolding and
+    -- minting new ones for the Supplier and any change) without any extra
+    -- round trip to the Lender.
+    --
+    -- It is NOT enough, on its own, to mint a FundedInvoice co-signed by the
+    -- Buyer, because the Buyer's authority was never granted to this
+    -- choice, and a nested exercise's authority is computed fresh from its
+    -- *own* controllers and target signatories rather than inheriting this
+    -- choice's full ambient authority. So the receivable-assignment leg is
+    -- done by nested-exercising PaymentObligation_Settle -- a choice on a
+    -- contract signed by {buyer, supplier} whose controller list also
+    -- names `lender` explicitly (see that choice's comment), which is what
+    -- actually lets {supplier, buyer, lender} all be present for the
+    -- FundedInvoice create. That happens in the same atomic transaction as
+    -- the cash transfer above. This is the "cash movement and asset
+    -- assignment execute simultaneously and atomically" requirement,
+    -- achieved without a custom escrow service.
+    --
+    -- Visibility note: cashHoldingCid is owned solely by the Lender (no
+    -- observer), so the client submitting this choice must set
+    -- readAs = [lender] alongside actAs = [supplier] for the fetch below to
+    -- resolve -- the standard Canton pattern for bringing a counterparty's
+    -- contract into an atomic delivery-vs-payment style transaction.
+    choice Quote_Accept : ContractId FundedInvoice
+      with
+        auditor     : Party
+        fundingDate : Date
+      controller supplier
+      do
+        cash <- fetch cashHoldingCid
+        assertMsg "cash holding owner must be the lender" (cash.owner == lender)
+        let advanceAmount = faceValue * advanceRate
+        assertMsg "cash holding has insufficient funds for this advance"
+          (cash.amount >= advanceAmount)
+        archive cashHoldingCid
+        void $ create CashHolding with
+          owner = supplier; currency = cash.currency; amount = advanceAmount
+        let leftover = cash.amount - advanceAmount
+        when (leftover > 0.0) $
+          void $ create CashHolding with
+            owner = lender; currency = cash.currency; amount = leftover
+
+        exercise paymentObligationCid PaymentObligation_Settle with
+          lender; auditor; advanceRate; advanceAmount; yieldBps; fundingDate
+
+-- ------------------------------------------------------------
+-- Stage 3: Final, audited state
+-- ------------------------------------------------------------
+
+-- The only template the Auditor is ever made an observer of. InvoiceDraft,
+-- VerifiedInvoice, FinancingInvitation and Quote never mention the auditor
+-- at all -- querying the ledger as the Auditor's party structurally returns
+-- nothing for the bidding phase, because there is nothing to redact: the
+-- Auditor is simply not a stakeholder of any of those contracts. This is
+-- the "Selective Audit" invariant, enforced by Canton's privacy model
+-- rather than by an application-level filter.
+template FundedInvoice
+  with
+    supplier      : Party
+    buyer         : Party
+    lender        : Party
+    auditor       : Party
+    invoiceId     : Text
+    faceValue     : Decimal
+    currency      : Text
+    dueDate       : Date
+    advanceRate   : Decimal
+    advanceAmount : Decimal
+    yieldBps      : Int
+    fundingDate   : Date
+  where
+    signatory supplier, buyer, lender
+    observer auditor

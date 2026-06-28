@@ -1,0 +1,18 @@
+# Daml build artifacts (dpm build output inside each package)
+# daml/.gitignore only covers daml/.daml which doesn't exist;
+# the real build dirs are daml/main/.daml/ and daml/test/.daml/
+daml/**/.daml/
+
+# Runtime logs from local dev scripts
+run/*.log
+run/*.out
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo

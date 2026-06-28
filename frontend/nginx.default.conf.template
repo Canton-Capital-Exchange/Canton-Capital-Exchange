@@ -1,0 +1,18 @@
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location / {
+        try_files $uri /index.html;
+    }
+
+    # Same purpose as the Vite dev proxy in vite.config.ts: the browser only
+    # ever talks to this container, which forwards to the Canton sandbox's
+    # JSON Ledger API on the compose network -- no CORS configuration needed.
+    location /v2/ {
+        proxy_pass http://${CANTON_UPSTREAM}/v2/;
+        proxy_http_version 1.1;
+    }
+}

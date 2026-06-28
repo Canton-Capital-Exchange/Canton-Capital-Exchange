@@ -1,0 +1,15 @@
+module Cash where
+
+-- Generic tokenized cash leg (simulated USDCx deposit). Deliberately has no
+-- knowledge of invoicing at all -- this is the reusable settlement-currency
+-- primitive that Invoicing.daml's Quote_Accept moves around; see that
+-- module's header for the domain logic built on top of it.
+
+template CashHolding
+  with
+    owner    : Party
+    currency : Text
+    amount   : Decimal
+  where
+    signatory owner
+    ensure amount > 0.0
