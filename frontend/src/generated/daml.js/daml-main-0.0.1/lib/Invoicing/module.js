@@ -64,6 +64,18 @@ exports.FinancingInvitation = damlTypes.assembleTemplate(
       }),
       resultEncode: function (__typed__) { return damlTypes.Unit.encode(__typed__); },
     },
+    FinancingInvitation_Cancel: {
+      template: function () { return exports.FinancingInvitation; },
+      choiceName: 'FinancingInvitation_Cancel',
+      argumentDecoder: damlTypes.lazyMemo(function () {
+        return exports.FinancingInvitation_Cancel.decoder;
+      }),
+      argumentEncode: function (__typed__) { return exports.FinancingInvitation_Cancel.encode(__typed__); },
+      resultDecoder: damlTypes.lazyMemo(function () {
+        return damlTypes.Unit.decoder;
+      }),
+      resultEncode: function (__typed__) { return damlTypes.Unit.encode(__typed__); },
+    },
     FinancingInvitation_Decline: {
       template: function () { return exports.FinancingInvitation; },
       choiceName: 'FinancingInvitation_Decline',
@@ -92,6 +104,16 @@ exports.FinancingInvitation = damlTypes.assembleTemplate(
 );
 
 damlTypes.registerTemplate(exports.FinancingInvitation, ['e075b7559cd6e27ea3e7d66c386fbf6194d344756c85e04a1380e5f759470a02', '#daml-main']);
+
+exports.FinancingInvitation_Cancel = {
+  decoder: damlTypes.lazyMemo(function () {
+    return jtv.object({
+    });
+  }),
+  encode: function (__typed__) {
+    return {};
+  },
+};
 
 exports.FinancingInvitation_Decline = {
   decoder: damlTypes.lazyMemo(function () {
@@ -438,12 +460,14 @@ exports.Quote_Accept = {
     return jtv.object({
       auditor: damlTypes.Party.decoder,
       fundingDate: damlTypes.Date.decoder,
+      remainingInvitationCids: jtv.array(damlTypes.ContractId(exports.FinancingInvitation).decoder),
     });
   }),
   encode: function (__typed__) {
     return {
       auditor: damlTypes.Party.encode(__typed__.auditor),
       fundingDate: damlTypes.Date.encode(__typed__.fundingDate),
+      remainingInvitationCids: __typed__.remainingInvitationCids.map(function (x) { return damlTypes.ContractId(exports.FinancingInvitation).encode(x); }),
     };
   },
 };

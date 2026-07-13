@@ -29,10 +29,13 @@ export declare interface FinancingInvitationInterface {
   Archive: 
     damlTypes.Choice<FinancingInvitation, pkg9e70a8b3510d617f8a136213f33d6a903a10ca0eeec76bb06ba55d1ed9680f69.DA.Internal.Template.Archive, {}, undefined> &
     damlTypes.ChoiceFrom<damlTypes.Template<FinancingInvitation, undefined>>;
-  FinancingInvitation_Decline: 
+  FinancingInvitation_Cancel:
+    damlTypes.Choice<FinancingInvitation, FinancingInvitation_Cancel, {}, undefined> &
+    damlTypes.ChoiceFrom<damlTypes.Template<FinancingInvitation, undefined>>;
+  FinancingInvitation_Decline:
     damlTypes.Choice<FinancingInvitation, FinancingInvitation_Decline, {}, undefined> &
     damlTypes.ChoiceFrom<damlTypes.Template<FinancingInvitation, undefined>>;
-  FinancingInvitation_SubmitQuote: 
+  FinancingInvitation_SubmitQuote:
     damlTypes.Choice<FinancingInvitation, FinancingInvitation_SubmitQuote, damlTypes.ContractId<Quote>, undefined> &
     damlTypes.ChoiceFrom<damlTypes.Template<FinancingInvitation, undefined>>;
 }
@@ -40,6 +43,12 @@ export declare const FinancingInvitation:
   damlTypes.Template<FinancingInvitation, undefined, '#daml-main:Invoicing:FinancingInvitation'> &
   damlTypes.ToInterface<FinancingInvitation, never> &
   FinancingInvitationInterface
+
+export declare type FinancingInvitation_Cancel = {
+}
+
+export declare const FinancingInvitation_Cancel:
+  damlTypes.Serializable<FinancingInvitation_Cancel>
 
 export declare type FinancingInvitation_Decline = {
 }
@@ -193,6 +202,7 @@ export declare const Quote:
 export declare type Quote_Accept = {
   auditor: damlTypes.Party,
   fundingDate: damlTypes.Date,
+  remainingInvitationCids: string[],
 }
 
 export declare const Quote_Accept:

@@ -46,7 +46,7 @@ setup = script do
       supplier; buyer
       invoiceId = "INV-1001"
       faceValue = 100000.0
-      currency = "USD"
+      currency = "cETH"
       dueDate
       description = "Q1 hardware delivery"
 
@@ -137,6 +137,7 @@ setup = script do
     exerciseCmd quoteA Quote_Accept with
       auditor
       fundingDate = date 2026 Jan 20
+      remainingInvitationCids = []  -- both lenders bid, so no open invitations remain
 
   -- The losing bid is cleared by the Supplier.
   submit supplier do

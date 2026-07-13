@@ -7,9 +7,15 @@ import { PERSONA_META, PERSONA_ORDER, partyIdToPersona, type PersonaId } from ".
 // Skips CashHolding+CcxTransferFactory seeding; lenders fund via the wallet faucet instead.
 export const USE_REAL_TOKENS = import.meta.env.VITE_REAL_TOKENS === "true";
 
-const LENDER_SEED_CASH: Partial<Record<PersonaId, { amount: string; currency: string }>> = {
-  lenderA: { amount: "5000000", currency: "cETH" },
-  lenderB: { amount: "3000000", currency: "cBTC" },
+const LENDER_SEED_CASH: Partial<Record<PersonaId, Array<{ amount: string; currency: string }>>> = {
+  lenderA: [
+    { amount: "5000000", currency: "cETH" },
+    { amount: "2000000", currency: "raUSD" },
+  ],
+  lenderB: [
+    { amount: "3000000", currency: "cBTC" },
+    { amount: "1500000", currency: "raUSD" },
+  ],
 };
 
 async function listKnownParties(): Promise<string[]> {
@@ -81,12 +87,14 @@ export async function resolveParties(): Promise<Record<PersonaId, string>> {
 
   if (!USE_REAL_TOKENS) {
     const allParties = Object.values(result);
-    for (const [id, seed] of Object.entries(LENDER_SEED_CASH) as [PersonaId, { amount: string; currency: string }][]) {
+    for (const [id, seeds] of Object.entries(LENDER_SEED_CASH) as [PersonaId, Array<{ amount: string; currency: string }>][]) {
       const partyId = result[id];
       const view = await fetchPersonaView(partyId);
       if (view.cashHoldings.length === 0) {
-        await seedCashHolding(partyId, seed.amount, seed.currency);
         await seedTransferFactory(partyId, allParties);
+        for (const seed of seeds) {
+          await seedCashHolding(partyId, seed.amount, seed.currency);
+        }
       }
     }
   }

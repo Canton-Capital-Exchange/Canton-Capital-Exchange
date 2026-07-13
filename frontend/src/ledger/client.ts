@@ -106,7 +106,7 @@ export async function fetchPersonaView(party: string): Promise<PersonaView> {
     financingInvitations: byTemplate(events, "Invoicing", "FinancingInvitation"),
     quotes: byTemplate(events, "Invoicing", "Quote"),
     fundedInvoices: byTemplate(events, "Invoicing", "FundedInvoice"),
-    cashHoldings: byTemplate(events, "Cash", "CashHolding"),
+    cashHoldings: byTemplate<Cash.CashHolding>(events, "Cash", "CashHolding").filter(c => c.payload.owner === party),
     transferFactories: byTemplate(events, "Cash", "CcxTransferFactory"),
   };
 }

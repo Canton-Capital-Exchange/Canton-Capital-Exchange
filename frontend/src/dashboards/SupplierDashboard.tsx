@@ -20,7 +20,7 @@ function defaultBiddingDeadline() {
 function TokenizeForm({ supplier, buyer, onDone }: { supplier: string; buyer: string; onDone: () => void }) {
   const [invoiceId, setInvoiceId] = useState(() => `INV-${Math.floor(1000 + Math.random() * 9000)}`);
   const [faceValue, setFaceValue] = useState("100000");
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState("cETH");
   const [dueDate, setDueDate] = useState(defaultDueDate());
   const [description, setDescription] = useState("");
   const [busy, setBusy] = useState(false);
@@ -46,7 +46,11 @@ function TokenizeForm({ supplier, buyer, onDone }: { supplier: string; buyer: st
         <input className={inputClass} type="number" min="0" step="0.01" value={faceValue} onChange={(e) => setFaceValue(e.target.value)} required />
       </Field>
       <Field label="Currency">
-        <input className={inputClass} value={currency} onChange={(e) => setCurrency(e.target.value)} required />
+        <select className={inputClass} value={currency} onChange={(e) => setCurrency(e.target.value)} required>
+          <option value="cETH">cETH</option>
+          <option value="cBTC">cBTC</option>
+          <option value="raUSD">raUSD</option>
+        </select>
       </Field>
       <Field label="Due Date">
         <input className={inputClass} type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
@@ -239,9 +243,13 @@ export function SupplierDashboard({
                   </Button>
                   <Button
                     onClick={async () => {
+                      const openInvitations = view.financingInvitations
+                        .filter(inv => inv.payload.invoiceId === q.payload.invoiceId)
+                        .map(inv => inv.contractId);
                       await acceptQuote(supplier, q.payload.lender, q.contractId, {
                         auditor,
                         fundingDate: new Date().toISOString().slice(0, 10),
+                        remainingInvitationCids: openInvitations,
                       });
                       refresh();
                     }}
@@ -254,6 +262,20 @@ export function SupplierDashboard({
           </ul>
         )}
       </Panel>
+
+      {view.cashHoldings.length > 0 && (
+        <Panel className="lg:col-span-2">
+          <PanelHeader title="Received Tokens" subtitle="Advance payments received from lenders — settled atomically on invoice acceptance" />
+          <ul className="divide-y divide-slate-800">
+            {view.cashHoldings.map((c) => (
+              <li key={c.contractId} className="flex items-center justify-between px-4 py-3">
+                <Mono className="text-sm text-slate-200">{money(c.payload.amount, c.payload.currency)}</Mono>
+                <Badge tone="emerald">Received</Badge>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
 
       <Panel className="lg:col-span-2">
         <PanelHeader title="Settled" subtitle="Funded invoices -- now also visible to RegNode for compliance" />

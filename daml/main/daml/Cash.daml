@@ -3,7 +3,6 @@ module Cash where
 import qualified Splice.Api.Token.HoldingV1 as Holding
 import qualified Splice.Api.Token.TransferInstructionV1 as Transfer
 import Splice.Api.Token.MetadataV1 (emptyMetadata)
-import DA.Action (void)
 
 -- Sandbox-local implementation of the Splice Holding interface.
 -- On the DevNet lenders hold real Canton tokens (cETH, raUSD, cBTC) that
@@ -11,6 +10,11 @@ import DA.Action (void)
 -- template is only used by the local Docker/sandbox environment and the
 -- Daml test suite so that the full lifecycle can run without a live
 -- token registry.
+--
+-- Signatory is admin (the token registry / factory party), not owner.
+-- This mirrors how real Canton tokens work and lets CcxTransferFactory
+-- create receiver and change holdings without needing the receiver's
+-- authority -- the registry controls issuance, not the holder.
 template CashHolding
   with
     owner    : Party
@@ -18,7 +22,8 @@ template CashHolding
     currency : Text    -- used as InstrumentId.id (e.g. "cETH", "raUSD")
     amount   : Decimal
   where
-    signatory owner
+    signatory admin
+    observer  owner
     ensure amount > 0.0
 
     interface instance Holding.Holding for CashHolding where
@@ -48,20 +53,42 @@ template CcxTransferFactory
 
       transferFactory_transferImpl self arg = do
         let t = arg.transfer
-        -- Archive sender's input holdings. Receiver holding creation is
-        -- intentionally skipped: creating a CashHolding for the receiver
-        -- would require the receiver's authority, which is not available
-        -- inside an interface choice body (only controller + template
-        -- signatories contribute here). On the real DevNet the Splice
-        -- token registry creates the receiver holding natively; this
-        -- sandbox mock only needs to satisfy the structural test assertions.
-        void $ forA t.inputHoldingCids $ \cid ->
+        -- Fetch each input holding (to get amount/currency), then archive it.
+        -- We have admin's authority from CcxTransferFactory's signatory position,
+        -- which is sufficient to archive CashHolding (signatory admin) and to
+        -- create new ones for both receiver and sender change.
+        inputHoldings <- forA t.inputHoldingCids $ \cid -> do
+          h <- fetch (fromInterfaceContractId @CashHolding cid)
           archive (fromInterfaceContractId @CashHolding cid)
-        pure Transfer.TransferInstructionResult with
-          output = Transfer.TransferInstructionResult_Completed with
-            receiverHoldingCids = []
-          senderChangeCids = []
-          meta             = emptyMetadata
+          return h
+        case inputHoldings of
+          [] -> pure Transfer.TransferInstructionResult with
+                  output = Transfer.TransferInstructionResult_Completed with
+                    receiverHoldingCids = []
+                  senderChangeCids = []
+                  meta             = emptyMetadata
+          (firstH :: _) -> do
+            let totalInput = foldl (\acc h -> acc + h.amount) 0.0 inputHoldings
+                changeAmt  = totalInput - t.amount
+            receiverCid <- create CashHolding with
+              owner    = t.receiver
+              admin    = admin
+              currency = firstH.currency
+              amount   = t.amount
+            changeCids <- if changeAmt > 0.0
+              then do
+                cid <- create CashHolding with
+                  owner    = t.sender
+                  admin    = admin
+                  currency = firstH.currency
+                  amount   = changeAmt
+                return [toInterfaceContractId @Holding.Holding cid]
+              else return []
+            pure Transfer.TransferInstructionResult with
+              output = Transfer.TransferInstructionResult_Completed with
+                receiverHoldingCids = [toInterfaceContractId @Holding.Holding receiverCid]
+              senderChangeCids = changeCids
+              meta             = emptyMetadata
 
       transferFactory_publicFetchImpl self arg = do
         pure Transfer.TransferFactoryView with

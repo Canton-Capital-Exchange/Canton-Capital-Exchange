@@ -188,6 +188,13 @@ template FinancingInvitation
       controller lender
       do pure ()
 
+    -- Lets the Supplier atomically cancel an open invitation when a winning
+    -- bid is accepted, so no lender can submit a quote against an invoice
+    -- that has already been funded.
+    choice FinancingInvitation_Cancel : ()
+      controller supplier
+      do pure ()
+
     -- The Lender's private quote. Signed solely by the Lender, observed
     -- solely by the Supplier -- this is the blind-bid contract. No other
     -- Lender is a signatory or observer of it, so it is structurally
@@ -206,6 +213,8 @@ template FinancingInvitation
       do
         assertMsg "advance rate must be positive and not exceed the invitation's cap"
           (advanceRate > 0.0 && advanceRate <= maxAdvanceRate)
+        assertMsg "funding token must match the invoice currency"
+          (instrumentId.id == currency)
         create Quote with
           supplier; buyer; lender
           invoiceId; faceValue; currency; dueDate
@@ -269,8 +278,9 @@ template Quote
     -- pattern for atomic delivery-vs-payment without a separate escrow.
     choice Quote_Accept : ContractId FundedInvoice
       with
-        auditor     : Party
-        fundingDate : Date
+        auditor                  : Party
+        fundingDate              : Date
+        remainingInvitationCids  : [ContractId FinancingInvitation]
       controller supplier
       do
         now <- getTime
@@ -289,6 +299,10 @@ template Quote
           extraArgs = ExtraArgs with
             context = emptyChoiceContext
             meta    = emptyMetadata
+        -- Cancel all open invitations for this invoice so no lender can submit
+        -- a quote against an already-funded deal. Atomic with settlement.
+        _ <- forA remainingInvitationCids $ \cid ->
+          exercise cid FinancingInvitation_Cancel
         exercise paymentObligationCid PaymentObligation_Settle with
           lender; auditor; advanceRate; advanceAmount; yieldBps; fundingDate
 

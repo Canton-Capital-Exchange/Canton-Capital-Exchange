@@ -76,7 +76,7 @@ function QuoteDrawer({
       <Field label="Funding By">
         <input className={inputClass} type="date" value={fundingDeadline} onChange={(e) => setFundingDeadline(e.target.value)} required />
       </Field>
-      <Field label="Fund From">
+      <Field label="Token">
         <select className={inputClass} value={selectedHoldingCid} onChange={(e) => setSelectedHoldingCid(e.target.value)} required>
           {cashHoldings.map((c) => (
             <option key={c.contractId} value={c.contractId}>
@@ -131,7 +131,7 @@ export function LenderDashboard({
                   invitationCid={inv.contractId}
                   maxAdvanceRate={inv.payload.maxAdvanceRate}
                   biddingDeadline={inv.payload.biddingDeadline}
-                  cashHoldings={view.cashHoldings}
+                  cashHoldings={view.cashHoldings.filter(h => h.payload.currency === inv.payload.currency)}
                   transferFactories={view.transferFactories}
                   onDone={refresh}
                 />
@@ -142,7 +142,7 @@ export function LenderDashboard({
       </Panel>
 
       <Panel>
-        <PanelHeader title="My Cash Holdings" subtitle="Simulated tokenized deposits (USDCx) available to fund quotes" />
+        <PanelHeader title="Token Holdings" subtitle="cETH, cBTC, and raUSD available to fund quotes" />
         {view.cashHoldings.length === 0 ? (
           <EmptyState>No cash holdings.</EmptyState>
         ) : (
