@@ -17,7 +17,7 @@ RUN dpm install 3.5.1
 WORKDIR /src/main
 COPY main/daml.yaml ./
 COPY main/daml ./daml
-COPY deps /src/deps/
+COPY main/deps ./deps
 RUN dpm build
 
 FROM eclipse-temurin:21-jre-jammy AS runtime
