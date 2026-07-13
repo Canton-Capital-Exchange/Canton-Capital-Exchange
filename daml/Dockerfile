@@ -17,8 +17,12 @@ RUN dpm install 3.5.1
 WORKDIR /src/main
 COPY main/daml.yaml ./
 COPY main/daml ./daml
-COPY main/deps ./deps
-RUN dpm build
+RUN mkdir -p deps \
+ && BASE=https://raw.githubusercontent.com/DLC-link/cbtc-lib/main/cbtc-dars/dars/dependencies \
+ && curl -fsSL "$BASE/splice-api-token-metadata-v1-1.0.0.dar"              -o deps/splice-api-token-metadata-v1-1.0.0.dar \
+ && curl -fsSL "$BASE/splice-api-token-holding-v1-1.0.0.dar"               -o deps/splice-api-token-holding-v1-1.0.0.dar \
+ && curl -fsSL "$BASE/splice-api-token-transfer-instruction-v1-1.0.0.dar"  -o deps/splice-api-token-transfer-instruction-v1-1.0.0.dar \
+ && dpm build
 
 FROM eclipse-temurin:21-jre-jammy AS runtime
 
