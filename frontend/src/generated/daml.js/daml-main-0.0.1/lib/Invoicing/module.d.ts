@@ -6,10 +6,10 @@
 import * as jtv from '@mojotech/json-type-validation';
 import * as damlTypes from '@daml/types';
 
+import * as pkg55ba4deb0ad4662c4168b39859738a0e91388d252286480c7331b3f71a517281 from '@daml.js/splice-api-token-transfer-instruction-v1-1.0.0';
 import * as pkg5aee9b21b8e9a4c4975b5f4c4198e6e6e8469df49e2010820e792f393db870f4 from '@daml.js/daml-prim-DA-Types-1.0.0';
+import * as pkg718a0f77e505a8de22f188bd4c87fe74101274e9d4cb1bfac7d09aec7158d35b from '@daml.js/splice-api-token-holding-v1-1.0.0';
 import * as pkg9e70a8b3510d617f8a136213f33d6a903a10ca0eeec76bb06ba55d1ed9680f69 from '@daml.js/ghc-stdlib-DA-Internal-Template-1.0.0';
-
-import * as Cash from '../Cash/module';
 
 export declare type FinancingInvitation = {
   supplier: damlTypes.Party,
@@ -51,7 +51,9 @@ export declare type FinancingInvitation_SubmitQuote = {
   advanceRate: damlTypes.Numeric,
   yieldBps: damlTypes.Int,
   fundingDeadline: damlTypes.Date,
-  cashHoldingCid: damlTypes.ContractId<Cash.CashHolding>,
+  holdingCid: damlTypes.ContractId<pkg718a0f77e505a8de22f188bd4c87fe74101274e9d4cb1bfac7d09aec7158d35b.Splice.Api.Token.HoldingV1.Holding>,
+  transferFactoryCid: damlTypes.ContractId<pkg55ba4deb0ad4662c4168b39859738a0e91388d252286480c7331b3f71a517281.Splice.Api.Token.TransferInstructionV1.TransferFactory>,
+  instrumentId: pkg718a0f77e505a8de22f188bd4c87fe74101274e9d4cb1bfac7d09aec7158d35b.Splice.Api.Token.HoldingV1.InstrumentId,
 }
 
 export declare const FinancingInvitation_SubmitQuote:
@@ -166,7 +168,9 @@ export declare type Quote = {
   advanceRate: damlTypes.Numeric,
   yieldBps: damlTypes.Int,
   fundingDeadline: damlTypes.Date,
-  cashHoldingCid: damlTypes.ContractId<Cash.CashHolding>,
+  holdingCid: damlTypes.ContractId<pkg718a0f77e505a8de22f188bd4c87fe74101274e9d4cb1bfac7d09aec7158d35b.Splice.Api.Token.HoldingV1.Holding>,
+  transferFactoryCid: damlTypes.ContractId<pkg55ba4deb0ad4662c4168b39859738a0e91388d252286480c7331b3f71a517281.Splice.Api.Token.TransferInstructionV1.TransferFactory>,
+  instrumentId: pkg718a0f77e505a8de22f188bd4c87fe74101274e9d4cb1bfac7d09aec7158d35b.Splice.Api.Token.HoldingV1.InstrumentId,
   paymentObligationCid: damlTypes.ContractId<PaymentObligation>,
 }
 

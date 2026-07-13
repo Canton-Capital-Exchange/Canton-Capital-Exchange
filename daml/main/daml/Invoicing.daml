@@ -1,7 +1,9 @@
 module Invoicing where
 
-import DA.Action (void, when)
-import Cash
+import DA.Time (addRelTime, days)
+import qualified Splice.Api.Token.HoldingV1 as Holding
+import qualified Splice.Api.Token.TransferInstructionV1 as Transfer
+import Splice.Api.Token.MetadataV1 (ExtraArgs(..), emptyMetadata, emptyChoiceContext)
 
 -- ============================================================
 -- Canton Capital Exchange (CCX)
@@ -194,10 +196,12 @@ template FinancingInvitation
     -- ever sees their own.
     choice FinancingInvitation_SubmitQuote : ContractId Quote
       with
-        advanceRate     : Decimal
-        yieldBps        : Int
-        fundingDeadline : Date
-        cashHoldingCid  : ContractId CashHolding
+        advanceRate        : Decimal
+        yieldBps           : Int
+        fundingDeadline    : Date
+        holdingCid         : ContractId Holding.Holding
+        transferFactoryCid : ContractId Transfer.TransferFactory
+        instrumentId       : Holding.InstrumentId
       controller lender
       do
         assertMsg "advance rate must be positive and not exceed the invitation's cap"
@@ -206,7 +210,7 @@ template FinancingInvitation
           supplier; buyer; lender
           invoiceId; faceValue; currency; dueDate
           advanceRate; yieldBps; fundingDeadline
-          cashHoldingCid; paymentObligationCid
+          holdingCid; transferFactoryCid; instrumentId; paymentObligationCid
 
 template Quote
   with
@@ -220,7 +224,9 @@ template Quote
     advanceRate           : Decimal
     yieldBps              : Int
     fundingDeadline       : Date
-    cashHoldingCid        : ContractId CashHolding
+    holdingCid            : ContractId Holding.Holding
+    transferFactoryCid    : ContractId Transfer.TransferFactory
+    instrumentId          : Holding.InstrumentId
     paymentObligationCid  : ContractId PaymentObligation
   where
     signatory lender
@@ -256,30 +262,33 @@ template Quote
     -- assignment execute simultaneously and atomically" requirement,
     -- achieved without a custom escrow service.
     --
-    -- Visibility note: cashHoldingCid is owned solely by the Lender (no
+    -- Visibility note: holdingCid is owned solely by the Lender (no
     -- observer), so the client submitting this choice must set
-    -- readAs = [lender] alongside actAs = [supplier] for the fetch below to
-    -- resolve -- the standard Canton pattern for bringing a counterparty's
-    -- contract into an atomic delivery-vs-payment style transaction.
+    -- readAs = [lender] alongside actAs = [supplier] for the engine to
+    -- resolve it during TransferFactory_Transfer -- the standard Canton
+    -- pattern for atomic delivery-vs-payment without a separate escrow.
     choice Quote_Accept : ContractId FundedInvoice
       with
         auditor     : Party
         fundingDate : Date
       controller supplier
       do
-        cash <- fetch cashHoldingCid
-        assertMsg "cash holding owner must be the lender" (cash.owner == lender)
+        now <- getTime
         let advanceAmount = faceValue * advanceRate
-        assertMsg "cash holding has insufficient funds for this advance"
-          (cash.amount >= advanceAmount)
-        archive cashHoldingCid
-        void $ create CashHolding with
-          owner = supplier; currency = cash.currency; amount = advanceAmount
-        let leftover = cash.amount - advanceAmount
-        when (leftover > 0.0) $
-          void $ create CashHolding with
-            owner = lender; currency = cash.currency; amount = leftover
-
+        _ <- exercise transferFactoryCid Transfer.TransferFactory_Transfer with
+          expectedAdmin = instrumentId.admin
+          transfer = Transfer.Transfer with
+            sender           = lender
+            receiver         = supplier
+            amount           = advanceAmount
+            instrumentId
+            requestedAt      = now
+            executeBefore    = addRelTime now (days 1)
+            inputHoldingCids = [holdingCid]
+            meta             = emptyMetadata
+          extraArgs = ExtraArgs with
+            context = emptyChoiceContext
+            meta    = emptyMetadata
         exercise paymentObligationCid PaymentObligation_Settle with
           lender; auditor; advanceRate; advanceAmount; yieldBps; fundingDate
 

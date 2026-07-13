@@ -7,6 +7,10 @@ daml/**/.daml/
 run/*.log
 run/*.out
 
+# Local environment overrides (e.g. VITE_REAL_TOKENS=true for DevNet)
+.env.local
+.env*.local
+
 # OS
 .DS_Store
 Thumbs.db

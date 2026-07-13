@@ -9,7 +9,9 @@
   "dependencies": {
     "@mojotech/json-type-validation": "^3.1.0",
     "@daml.js/daml-prim-DA-Types-1.0.0": "file:../daml-prim-DA-Types-1.0.0",
-    "@daml.js/ghc-stdlib-DA-Internal-Template-1.0.0": "file:../ghc-stdlib-DA-Internal-Template-1.0.0"
+    "@daml.js/ghc-stdlib-DA-Internal-Template-1.0.0": "file:../ghc-stdlib-DA-Internal-Template-1.0.0",
+    "@daml.js/splice-api-token-holding-v1-1.0.0": "file:../splice-api-token-holding-v1-1.0.0",
+    "@daml.js/splice-api-token-transfer-instruction-v1-1.0.0": "file:../splice-api-token-transfer-instruction-v1-1.0.0"
   },
   "peer-dependencies": {
     "@daml/types": "3.5.1"

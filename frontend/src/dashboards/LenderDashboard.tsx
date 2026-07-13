@@ -10,6 +10,7 @@ function QuoteDrawer({
   maxAdvanceRate,
   biddingDeadline,
   cashHoldings,
+  transferFactories,
   onDone,
 }: {
   lender: string;
@@ -17,13 +18,14 @@ function QuoteDrawer({
   maxAdvanceRate: string;
   biddingDeadline: string;
   cashHoldings: PersonaView["cashHoldings"];
+  transferFactories: PersonaView["transferFactories"];
   onDone: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [advanceRate, setAdvanceRate] = useState(maxAdvanceRate);
   const [yieldBps, setYieldBps] = useState("450");
   const [fundingDeadline, setFundingDeadline] = useState(biddingDeadline);
-  const [cashHoldingCid, setCashHoldingCid] = useState(cashHoldings[0]?.contractId ?? "");
+  const [selectedHoldingCid, setSelectedHoldingCid] = useState(cashHoldings[0]?.contractId ?? "");
   const [busy, setBusy] = useState(false);
 
   if (!open) {
@@ -46,7 +48,19 @@ function QuoteDrawer({
         e.preventDefault();
         setBusy(true);
         try {
-          await submitQuote(lender, invitationCid, { advanceRate, yieldBps, fundingDeadline, cashHoldingCid });
+          const holding = cashHoldings.find((c) => c.contractId === selectedHoldingCid);
+          if (!holding) return;
+          const instrumentId = { admin: holding.payload.admin, id: holding.payload.currency };
+          const factory = transferFactories.find((f) => f.payload.admin === holding.payload.admin);
+          if (!factory) throw new Error("No TransferFactory found for this holding's admin");
+          await submitQuote(lender, invitationCid, {
+            advanceRate,
+            yieldBps,
+            fundingDeadline,
+            holdingCid: selectedHoldingCid,
+            transferFactoryCid: factory.contractId,
+            instrumentId,
+          });
           onDone();
         } finally {
           setBusy(false);
@@ -63,7 +77,7 @@ function QuoteDrawer({
         <input className={inputClass} type="date" value={fundingDeadline} onChange={(e) => setFundingDeadline(e.target.value)} required />
       </Field>
       <Field label="Fund From">
-        <select className={inputClass} value={cashHoldingCid} onChange={(e) => setCashHoldingCid(e.target.value)} required>
+        <select className={inputClass} value={selectedHoldingCid} onChange={(e) => setSelectedHoldingCid(e.target.value)} required>
           {cashHoldings.map((c) => (
             <option key={c.contractId} value={c.contractId}>
               {money(c.payload.amount, c.payload.currency)}
@@ -118,6 +132,7 @@ export function LenderDashboard({
                   maxAdvanceRate={inv.payload.maxAdvanceRate}
                   biddingDeadline={inv.payload.biddingDeadline}
                   cashHoldings={view.cashHoldings}
+                  transferFactories={view.transferFactories}
                   onDone={refresh}
                 />
               </li>

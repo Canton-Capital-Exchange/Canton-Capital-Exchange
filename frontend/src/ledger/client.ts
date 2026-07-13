@@ -94,6 +94,7 @@ export interface PersonaView {
   quotes: LedgerContract<Invoicing.Quote>[];
   fundedInvoices: LedgerContract<Invoicing.FundedInvoice>[];
   cashHoldings: LedgerContract<Cash.CashHolding>[];
+  transferFactories: LedgerContract<Cash.CcxTransferFactory>[];
 }
 
 export async function fetchPersonaView(party: string): Promise<PersonaView> {
@@ -106,6 +107,7 @@ export async function fetchPersonaView(party: string): Promise<PersonaView> {
     quotes: byTemplate(events, "Invoicing", "Quote"),
     fundedInvoices: byTemplate(events, "Invoicing", "FundedInvoice"),
     cashHoldings: byTemplate(events, "Cash", "CashHolding"),
+    transferFactories: byTemplate(events, "Cash", "CcxTransferFactory"),
   };
 }
 
@@ -195,7 +197,9 @@ export interface SubmitQuoteArgs {
   advanceRate: string;
   yieldBps: string;
   fundingDeadline: string;
-  cashHoldingCid: string;
+  holdingCid: string;
+  transferFactoryCid: string;
+  instrumentId: { admin: string; id: string };
 }
 
 export async function submitQuote(lender: string, contractId: string, args: SubmitQuoteArgs) {
@@ -235,8 +239,8 @@ export async function acceptQuote(
   args: Invoicing.Quote_Accept,
 ) {
   // readAs: [lender] is required here -- see the visibility note on
-  // Quote_Accept in Invoicing.daml. Without it the fetch of the Lender's
-  // CashHolding inside the choice body cannot resolve.
+  // Quote_Accept in Invoicing.daml. Without it the Lender's Holding contract
+  // cannot be resolved during TransferFactory_Transfer interpretation.
   await submit(
     [supplier],
     [{

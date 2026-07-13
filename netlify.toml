@@ -1,0 +1,32 @@
+[build]
+  base    = "frontend"
+  publish = "dist"
+  command = "npm run build"
+  # Only rebuild when frontend source actually changes -- ignores Daml, Docker, README edits
+  ignore  = "git diff --quiet HEAD^ HEAD -- frontend/"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# ---------------------------------------------------------------------------
+# DevNet proxy — update `to` with the Canton JSON Ledger API URL once the
+# organizers deploy the DAR, then redeploy on Netlify. Netlify rewrites the
+# request server-side so the browser never sees a cross-origin request.
+#
+# Example (replace with real URL when known):
+#   to = "https://hackcanton-01.devnet.naas.noders.services/v2/:splat"
+#
+# Also set these env vars in the Netlify UI before redeploying for DevNet:
+#   VITE_REAL_TOKENS = true
+# ---------------------------------------------------------------------------
+[[redirects]]
+  from   = "/v2/*"
+  to     = "https://DEVNET_LEDGER_URL_HERE/v2/:splat"
+  status = 200
+  force  = true
+
+# SPA fallback — all unmatched paths serve the React app
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

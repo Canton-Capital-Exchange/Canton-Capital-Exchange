@@ -11,15 +11,15 @@ var jtv = require('@mojotech/json-type-validation');
 /* eslint-disable-next-line no-unused-vars */
 var damlTypes = require('@daml/types');
 
+var pkg55ba4deb0ad4662c4168b39859738a0e91388d252286480c7331b3f71a517281 = require('@daml.js/splice-api-token-transfer-instruction-v1-1.0.0');
 var pkg5aee9b21b8e9a4c4975b5f4c4198e6e6e8469df49e2010820e792f393db870f4 = require('@daml.js/daml-prim-DA-Types-1.0.0');
+var pkg718a0f77e505a8de22f188bd4c87fe74101274e9d4cb1bfac7d09aec7158d35b = require('@daml.js/splice-api-token-holding-v1-1.0.0');
 var pkg9e70a8b3510d617f8a136213f33d6a903a10ca0eeec76bb06ba55d1ed9680f69 = require('@daml.js/ghc-stdlib-DA-Internal-Template-1.0.0');
-
-var Cash = require('../Cash/module');
 
 exports.FinancingInvitation = damlTypes.assembleTemplate(
   {
     templateId: '#daml-main:Invoicing:FinancingInvitation',
-    templateIdWithPackageId: '#99b3cc93ecddbdd6a395713261aca019b4e2599de239c61351c825a7f40bf34b:Invoicing:FinancingInvitation',
+    templateIdWithPackageId: '#e075b7559cd6e27ea3e7d66c386fbf6194d344756c85e04a1380e5f759470a02:Invoicing:FinancingInvitation',
     keyDecoder: jtv.constant(undefined),
     keyEncode: function () { throw 'EncodeError'; },
     decoder: damlTypes.lazyMemo(function () {
@@ -91,7 +91,7 @@ exports.FinancingInvitation = damlTypes.assembleTemplate(
   },
 );
 
-damlTypes.registerTemplate(exports.FinancingInvitation, ['99b3cc93ecddbdd6a395713261aca019b4e2599de239c61351c825a7f40bf34b', '#daml-main']);
+damlTypes.registerTemplate(exports.FinancingInvitation, ['e075b7559cd6e27ea3e7d66c386fbf6194d344756c85e04a1380e5f759470a02', '#daml-main']);
 
 exports.FinancingInvitation_Decline = {
   decoder: damlTypes.lazyMemo(function () {
@@ -109,7 +109,9 @@ exports.FinancingInvitation_SubmitQuote = {
       advanceRate: damlTypes.Numeric(10).decoder,
       yieldBps: damlTypes.Int.decoder,
       fundingDeadline: damlTypes.Date.decoder,
-      cashHoldingCid: damlTypes.ContractId(Cash.CashHolding).decoder,
+      holdingCid: damlTypes.ContractId(pkg718a0f77e505a8de22f188bd4c87fe74101274e9d4cb1bfac7d09aec7158d35b.Splice.Api.Token.HoldingV1.Holding).decoder,
+      transferFactoryCid: damlTypes.ContractId(pkg55ba4deb0ad4662c4168b39859738a0e91388d252286480c7331b3f71a517281.Splice.Api.Token.TransferInstructionV1.TransferFactory).decoder,
+      instrumentId: pkg718a0f77e505a8de22f188bd4c87fe74101274e9d4cb1bfac7d09aec7158d35b.Splice.Api.Token.HoldingV1.InstrumentId.decoder,
     });
   }),
   encode: function (__typed__) {
@@ -117,7 +119,9 @@ exports.FinancingInvitation_SubmitQuote = {
       advanceRate: damlTypes.Numeric(10).encode(__typed__.advanceRate),
       yieldBps: damlTypes.Int.encode(__typed__.yieldBps),
       fundingDeadline: damlTypes.Date.encode(__typed__.fundingDeadline),
-      cashHoldingCid: damlTypes.ContractId(Cash.CashHolding).encode(__typed__.cashHoldingCid),
+      holdingCid: damlTypes.ContractId(pkg718a0f77e505a8de22f188bd4c87fe74101274e9d4cb1bfac7d09aec7158d35b.Splice.Api.Token.HoldingV1.Holding).encode(__typed__.holdingCid),
+      transferFactoryCid: damlTypes.ContractId(pkg55ba4deb0ad4662c4168b39859738a0e91388d252286480c7331b3f71a517281.Splice.Api.Token.TransferInstructionV1.TransferFactory).encode(__typed__.transferFactoryCid),
+      instrumentId: pkg718a0f77e505a8de22f188bd4c87fe74101274e9d4cb1bfac7d09aec7158d35b.Splice.Api.Token.HoldingV1.InstrumentId.encode(__typed__.instrumentId),
     };
   },
 };
@@ -125,7 +129,7 @@ exports.FinancingInvitation_SubmitQuote = {
 exports.FundedInvoice = damlTypes.assembleTemplate(
   {
     templateId: '#daml-main:Invoicing:FundedInvoice',
-    templateIdWithPackageId: '#99b3cc93ecddbdd6a395713261aca019b4e2599de239c61351c825a7f40bf34b:Invoicing:FundedInvoice',
+    templateIdWithPackageId: '#e075b7559cd6e27ea3e7d66c386fbf6194d344756c85e04a1380e5f759470a02:Invoicing:FundedInvoice',
     keyDecoder: jtv.constant(undefined),
     keyEncode: function () { throw 'EncodeError'; },
     decoder: damlTypes.lazyMemo(function () {
@@ -175,12 +179,12 @@ exports.FundedInvoice = damlTypes.assembleTemplate(
   },
 );
 
-damlTypes.registerTemplate(exports.FundedInvoice, ['99b3cc93ecddbdd6a395713261aca019b4e2599de239c61351c825a7f40bf34b', '#daml-main']);
+damlTypes.registerTemplate(exports.FundedInvoice, ['e075b7559cd6e27ea3e7d66c386fbf6194d344756c85e04a1380e5f759470a02', '#daml-main']);
 
 exports.InvoiceDraft = damlTypes.assembleTemplate(
   {
     templateId: '#daml-main:Invoicing:InvoiceDraft',
-    templateIdWithPackageId: '#99b3cc93ecddbdd6a395713261aca019b4e2599de239c61351c825a7f40bf34b:Invoicing:InvoiceDraft',
+    templateIdWithPackageId: '#e075b7559cd6e27ea3e7d66c386fbf6194d344756c85e04a1380e5f759470a02:Invoicing:InvoiceDraft',
     keyDecoder: jtv.constant(undefined),
     keyEncode: function () { throw 'EncodeError'; },
     decoder: damlTypes.lazyMemo(function () {
@@ -244,7 +248,7 @@ exports.InvoiceDraft = damlTypes.assembleTemplate(
   },
 );
 
-damlTypes.registerTemplate(exports.InvoiceDraft, ['99b3cc93ecddbdd6a395713261aca019b4e2599de239c61351c825a7f40bf34b', '#daml-main']);
+damlTypes.registerTemplate(exports.InvoiceDraft, ['e075b7559cd6e27ea3e7d66c386fbf6194d344756c85e04a1380e5f759470a02', '#daml-main']);
 
 exports.InvoiceDraft_Verify = {
   decoder: damlTypes.lazyMemo(function () {
@@ -269,7 +273,7 @@ exports.InvoiceDraft_Withdraw = {
 exports.PaymentObligation = damlTypes.assembleTemplate(
   {
     templateId: '#daml-main:Invoicing:PaymentObligation',
-    templateIdWithPackageId: '#99b3cc93ecddbdd6a395713261aca019b4e2599de239c61351c825a7f40bf34b:Invoicing:PaymentObligation',
+    templateIdWithPackageId: '#e075b7559cd6e27ea3e7d66c386fbf6194d344756c85e04a1380e5f759470a02:Invoicing:PaymentObligation',
     keyDecoder: jtv.constant(undefined),
     keyEncode: function () { throw 'EncodeError'; },
     decoder: damlTypes.lazyMemo(function () {
@@ -321,7 +325,7 @@ exports.PaymentObligation = damlTypes.assembleTemplate(
   },
 );
 
-damlTypes.registerTemplate(exports.PaymentObligation, ['99b3cc93ecddbdd6a395713261aca019b4e2599de239c61351c825a7f40bf34b', '#daml-main']);
+damlTypes.registerTemplate(exports.PaymentObligation, ['e075b7559cd6e27ea3e7d66c386fbf6194d344756c85e04a1380e5f759470a02', '#daml-main']);
 
 exports.PaymentObligation_Settle = {
   decoder: damlTypes.lazyMemo(function () {
@@ -349,7 +353,7 @@ exports.PaymentObligation_Settle = {
 exports.Quote = damlTypes.assembleTemplate(
   {
     templateId: '#daml-main:Invoicing:Quote',
-    templateIdWithPackageId: '#99b3cc93ecddbdd6a395713261aca019b4e2599de239c61351c825a7f40bf34b:Invoicing:Quote',
+    templateIdWithPackageId: '#e075b7559cd6e27ea3e7d66c386fbf6194d344756c85e04a1380e5f759470a02:Invoicing:Quote',
     keyDecoder: jtv.constant(undefined),
     keyEncode: function () { throw 'EncodeError'; },
     decoder: damlTypes.lazyMemo(function () {
@@ -364,7 +368,9 @@ exports.Quote = damlTypes.assembleTemplate(
         advanceRate: damlTypes.Numeric(10).decoder,
         yieldBps: damlTypes.Int.decoder,
         fundingDeadline: damlTypes.Date.decoder,
-        cashHoldingCid: damlTypes.ContractId(Cash.CashHolding).decoder,
+        holdingCid: damlTypes.ContractId(pkg718a0f77e505a8de22f188bd4c87fe74101274e9d4cb1bfac7d09aec7158d35b.Splice.Api.Token.HoldingV1.Holding).decoder,
+        transferFactoryCid: damlTypes.ContractId(pkg55ba4deb0ad4662c4168b39859738a0e91388d252286480c7331b3f71a517281.Splice.Api.Token.TransferInstructionV1.TransferFactory).decoder,
+        instrumentId: pkg718a0f77e505a8de22f188bd4c87fe74101274e9d4cb1bfac7d09aec7158d35b.Splice.Api.Token.HoldingV1.InstrumentId.decoder,
         paymentObligationCid: damlTypes.ContractId(exports.PaymentObligation).decoder,
       });
     }),
@@ -380,7 +386,9 @@ exports.Quote = damlTypes.assembleTemplate(
         advanceRate: damlTypes.Numeric(10).encode(__typed__.advanceRate),
         yieldBps: damlTypes.Int.encode(__typed__.yieldBps),
         fundingDeadline: damlTypes.Date.encode(__typed__.fundingDeadline),
-        cashHoldingCid: damlTypes.ContractId(Cash.CashHolding).encode(__typed__.cashHoldingCid),
+        holdingCid: damlTypes.ContractId(pkg718a0f77e505a8de22f188bd4c87fe74101274e9d4cb1bfac7d09aec7158d35b.Splice.Api.Token.HoldingV1.Holding).encode(__typed__.holdingCid),
+        transferFactoryCid: damlTypes.ContractId(pkg55ba4deb0ad4662c4168b39859738a0e91388d252286480c7331b3f71a517281.Splice.Api.Token.TransferInstructionV1.TransferFactory).encode(__typed__.transferFactoryCid),
+        instrumentId: pkg718a0f77e505a8de22f188bd4c87fe74101274e9d4cb1bfac7d09aec7158d35b.Splice.Api.Token.HoldingV1.InstrumentId.encode(__typed__.instrumentId),
         paymentObligationCid: damlTypes.ContractId(exports.PaymentObligation).encode(__typed__.paymentObligationCid),
       };
     },
@@ -423,7 +431,7 @@ exports.Quote = damlTypes.assembleTemplate(
   },
 );
 
-damlTypes.registerTemplate(exports.Quote, ['99b3cc93ecddbdd6a395713261aca019b4e2599de239c61351c825a7f40bf34b', '#daml-main']);
+damlTypes.registerTemplate(exports.Quote, ['e075b7559cd6e27ea3e7d66c386fbf6194d344756c85e04a1380e5f759470a02', '#daml-main']);
 
 exports.Quote_Accept = {
   decoder: damlTypes.lazyMemo(function () {
@@ -453,7 +461,7 @@ exports.Quote_Reject = {
 exports.VerifiedInvoice = damlTypes.assembleTemplate(
   {
     templateId: '#daml-main:Invoicing:VerifiedInvoice',
-    templateIdWithPackageId: '#99b3cc93ecddbdd6a395713261aca019b4e2599de239c61351c825a7f40bf34b:Invoicing:VerifiedInvoice',
+    templateIdWithPackageId: '#e075b7559cd6e27ea3e7d66c386fbf6194d344756c85e04a1380e5f759470a02:Invoicing:VerifiedInvoice',
     keyDecoder: jtv.constant(undefined),
     keyEncode: function () { throw 'EncodeError'; },
     decoder: damlTypes.lazyMemo(function () {
@@ -505,7 +513,7 @@ exports.VerifiedInvoice = damlTypes.assembleTemplate(
   },
 );
 
-damlTypes.registerTemplate(exports.VerifiedInvoice, ['99b3cc93ecddbdd6a395713261aca019b4e2599de239c61351c825a7f40bf34b', '#daml-main']);
+damlTypes.registerTemplate(exports.VerifiedInvoice, ['e075b7559cd6e27ea3e7d66c386fbf6194d344756c85e04a1380e5f759470a02', '#daml-main']);
 
 exports.VerifiedInvoice_OpenForFinancing = {
   decoder: damlTypes.lazyMemo(function () {

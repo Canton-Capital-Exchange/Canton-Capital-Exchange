@@ -3,9 +3,13 @@ import { client, unwrap } from "./http";
 import { fetchPersonaView } from "./client";
 import { PERSONA_META, PERSONA_ORDER, partyIdToPersona, type PersonaId } from "./parties";
 
-const LENDER_SEED_CASH: Partial<Record<PersonaId, string>> = {
-  lenderA: "5000000",
-  lenderB: "3000000",
+// Set VITE_REAL_TOKENS=true when running against DevNet with real cETH/raUSD.
+// Skips CashHolding+CcxTransferFactory seeding; lenders fund via the wallet faucet instead.
+export const USE_REAL_TOKENS = import.meta.env.VITE_REAL_TOKENS === "true";
+
+const LENDER_SEED_CASH: Partial<Record<PersonaId, { amount: string; currency: string }>> = {
+  lenderA: { amount: "5000000", currency: "cETH" },
+  lenderB: { amount: "3000000", currency: "cBTC" },
 };
 
 async function listKnownParties(): Promise<string[]> {
@@ -20,18 +24,35 @@ async function allocateParty(hint: string): Promise<string> {
   return unwrap(data, error).partyDetails.party;
 }
 
-async function seedCashHolding(owner: string, amount: string) {
+async function seedCashHolding(owner: string, amount: string, currency: string) {
   await client.POST("/v2/commands/submit-and-wait", {
     body: {
       commands: [{
         CreateCommand: {
           templateId: Cash.CashHolding.templateId,
-          createArguments: { owner, currency: "USDCx", amount },
+          createArguments: { owner, admin: owner, currency, amount },
         },
       }],
       commandId: `seed-cash-${crypto.randomUUID()}`,
       actAs: [owner],
       readAs: [owner],
+      userId: "ccx-app",
+    },
+  });
+}
+
+async function seedTransferFactory(admin: string, observers: string[]) {
+  await client.POST("/v2/commands/submit-and-wait", {
+    body: {
+      commands: [{
+        CreateCommand: {
+          templateId: Cash.CcxTransferFactory.templateId,
+          createArguments: { admin, observers },
+        },
+      }],
+      commandId: `seed-factory-${crypto.randomUUID()}`,
+      actAs: [admin],
+      readAs: [],
       userId: "ccx-app",
     },
   });
@@ -58,13 +79,20 @@ export async function resolveParties(): Promise<Record<PersonaId, string>> {
     partyIdToPersona.set(partyId, meta);
   }
 
-  for (const [id, amount] of Object.entries(LENDER_SEED_CASH) as [PersonaId, string][]) {
-    const partyId = result[id];
-    const view = await fetchPersonaView(partyId);
-    if (view.cashHoldings.length === 0) {
-      await seedCashHolding(partyId, amount);
+  if (!USE_REAL_TOKENS) {
+    const allParties = Object.values(result);
+    for (const [id, seed] of Object.entries(LENDER_SEED_CASH) as [PersonaId, { amount: string; currency: string }][]) {
+      const partyId = result[id];
+      const view = await fetchPersonaView(partyId);
+      if (view.cashHoldings.length === 0) {
+        await seedCashHolding(partyId, seed.amount, seed.currency);
+        await seedTransferFactory(partyId, allParties);
+      }
     }
   }
+  // On DevNet (USE_REAL_TOKENS=true): lenders receive cETH/raUSD via the
+  // hackathon wallet faucet. Holdings and TransferFactory contracts come
+  // from the real Splice token registries -- no seeding needed here.
 
   return result;
 }

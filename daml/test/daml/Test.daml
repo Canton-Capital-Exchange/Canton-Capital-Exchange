@@ -6,6 +6,8 @@ import DA.Optional (isNone, isSome)
 import Daml.Script
 import Cash
 import Invoicing
+import qualified Splice.Api.Token.HoldingV1 as Holding
+import qualified Splice.Api.Token.TransferInstructionV1 as Transfer
 
 -- Drives the full CCX lifecycle on an in-memory ledger and asserts the four
 -- privacy invariants hold structurally, not just by convention:
@@ -65,25 +67,44 @@ setup = script do
       paymentObligationCid = paymentObligation
   let [invitationA, invitationB] = invitations
 
+  -- Sandbox-only: create a transfer factory for each lender acting as their
+  -- own token admin (mirrors the real DevNet registry pattern).
+  let instrumentIdA = Holding.InstrumentId with admin = lenderA; id = "cETH"
+      instrumentIdB = Holding.InstrumentId with admin = lenderB; id = "cETH"
+  factoryA <- submit lenderA do
+    createCmd CcxTransferFactory with
+      admin = lenderA
+      observers = [supplier, buyer, lenderA, lenderB, auditor]
+  factoryB <- submit lenderB do
+    createCmd CcxTransferFactory with
+      admin = lenderB
+      observers = [supplier, buyer, lenderA, lenderB, auditor]
+
   -- Seed each Lender with tokenized cash to bid against.
   cashA <- submit lenderA do
-    createCmd CashHolding with owner = lenderA; currency = "USDCx"; amount = 5000000.0
+    createCmd CashHolding with
+      owner = lenderA; admin = lenderA; currency = "cETH"; amount = 5000000.0
   cashB <- submit lenderB do
-    createCmd CashHolding with owner = lenderB; currency = "USDCx"; amount = 3000000.0
+    createCmd CashHolding with
+      owner = lenderB; admin = lenderB; currency = "cETH"; amount = 3000000.0
 
   quoteA <- submit lenderA do
     exerciseCmd invitationA FinancingInvitation_SubmitQuote with
-      advanceRate = 0.85
-      yieldBps = 450
-      fundingDeadline = biddingDeadline
-      cashHoldingCid = cashA
+      advanceRate        = 0.85
+      yieldBps           = 450
+      fundingDeadline    = biddingDeadline
+      holdingCid         = toInterfaceContractId @Holding.Holding cashA
+      transferFactoryCid = toInterfaceContractId @Transfer.TransferFactory factoryA
+      instrumentId       = instrumentIdA
 
   quoteB <- submit lenderB do
     exerciseCmd invitationB FinancingInvitation_SubmitQuote with
-      advanceRate = 0.80
-      yieldBps = 600
-      fundingDeadline = biddingDeadline
-      cashHoldingCid = cashB
+      advanceRate        = 0.80
+      yieldBps           = 600
+      fundingDeadline    = biddingDeadline
+      holdingCid         = toInterfaceContractId @Holding.Holding cashB
+      transferFactoryCid = toInterfaceContractId @Transfer.TransferFactory factoryB
+      instrumentId       = instrumentIdB
 
   -- *** Blind auction invariant ***
   -- Lender B has the exact contract id of Lender A's quote (it's in this

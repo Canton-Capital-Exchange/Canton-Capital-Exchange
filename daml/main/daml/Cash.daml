@@ -1,15 +1,69 @@
 module Cash where
 
--- Generic tokenized cash leg (simulated USDCx deposit). Deliberately has no
--- knowledge of invoicing at all -- this is the reusable settlement-currency
--- primitive that Invoicing.daml's Quote_Accept moves around; see that
--- module's header for the domain logic built on top of it.
+import qualified Splice.Api.Token.HoldingV1 as Holding
+import qualified Splice.Api.Token.TransferInstructionV1 as Transfer
+import Splice.Api.Token.MetadataV1 (emptyMetadata)
+import DA.Action (void)
 
+-- Sandbox-local implementation of the Splice Holding interface.
+-- On the DevNet lenders hold real Canton tokens (cETH, raUSD, cBTC) that
+-- implement the same Holding interface from the Splice standard; this
+-- template is only used by the local Docker/sandbox environment and the
+-- Daml test suite so that the full lifecycle can run without a live
+-- token registry.
 template CashHolding
   with
     owner    : Party
-    currency : Text
+    admin    : Party   -- mirrors InstrumentId.admin (token registry party)
+    currency : Text    -- used as InstrumentId.id (e.g. "cETH", "raUSD")
     amount   : Decimal
   where
     signatory owner
     ensure amount > 0.0
+
+    interface instance Holding.Holding for CashHolding where
+      view = Holding.HoldingView with
+        owner        = owner
+        instrumentId = Holding.InstrumentId with admin; id = currency
+        amount       = amount
+        lock         = None
+        meta         = emptyMetadata
+
+-- Sandbox-local transfer factory. On the DevNet each token registry
+-- (cETH admin, raUSD admin, cBTC admin) publishes its own TransferFactory
+-- contract; this one is created by bootstrap.ts in local/Docker mode so
+-- the same Invoicing.daml code path works without real Canton tokens.
+template CcxTransferFactory
+  with
+    admin     : Party
+    observers : [Party]
+  where
+    signatory admin
+    observer observers
+
+    interface instance Transfer.TransferFactory for CcxTransferFactory where
+      view = Transfer.TransferFactoryView with
+        admin
+        meta = emptyMetadata
+
+      transferFactory_transferImpl self arg = do
+        let t = arg.transfer
+        -- Archive sender's input holdings. Receiver holding creation is
+        -- intentionally skipped: creating a CashHolding for the receiver
+        -- would require the receiver's authority, which is not available
+        -- inside an interface choice body (only controller + template
+        -- signatories contribute here). On the real DevNet the Splice
+        -- token registry creates the receiver holding natively; this
+        -- sandbox mock only needs to satisfy the structural test assertions.
+        void $ forA t.inputHoldingCids $ \cid ->
+          archive (fromInterfaceContractId @CashHolding cid)
+        pure Transfer.TransferInstructionResult with
+          output = Transfer.TransferInstructionResult_Completed with
+            receiverHoldingCids = []
+          senderChangeCids = []
+          meta             = emptyMetadata
+
+      transferFactory_publicFetchImpl self arg = do
+        pure Transfer.TransferFactoryView with
+          admin
+          meta = emptyMetadata

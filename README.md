@@ -6,20 +6,30 @@ bid blind on financing it, the Supplier accepts one bid and the cash
 movement + receivable assignment settle atomically, and a regulator-style
 Auditor sees only the finalized, funded result.
 
-This is a **live** demo: the React frontend talks to a real Canton sandbox
-over the JSON Ledger API. Nothing is mocked. See `daml/main/daml/Invoicing.daml`
-for the contract architecture and the comments on `PaymentObligation_Settle`
-/ `Quote_Accept` for how the four privacy invariants (mutual verification,
-blind auction, atomic settlement, selective audit) are enforced structurally
-by Canton's stakeholder model rather than by anything in the UI.
+**Settlement uses real Canton-native tokens.** The contracts implement the
+Splice token standard, so any Splice-compliant asset works as the funding
+currency. Different lenders can bid in different tokens in the same auction;
+the Supplier picks the quote with the token they prefer. On **localnet/sandbox**,
+AlphaBank is auto-seeded with simulated **cETH** and BetaVentures with
+simulated **cBTC** so the full multi-token demo runs without a wallet or
+faucet. On **DevNet**, lenders use real holdings from the Canton Network faucet.
+
+See `daml/main/daml/Invoicing.daml` for the contract architecture and the
+comments on `PaymentObligation_Settle` / `Quote_Accept` for how the four
+privacy invariants (mutual verification, blind auction, atomic settlement,
+selective audit) are enforced structurally by Canton's stakeholder model rather
+than by anything in the UI.
 
 ## Architecture: a generic blind-auction primitive, invoice factoring as the instance
 
 The Daml model is split into two modules (`daml/main/daml/`):
 
-- **`Cash.daml`** -- a domain-agnostic tokenized cash holding (`owner`,
-  `currency`, `amount`). Zero invoice vocabulary in it; it's the settlement
-  leg any auction-style marketplace on Canton would want.
+- **`Cash.daml`** -- sandbox mock implementations of the Splice token
+  interfaces (`Holding` and `TransferFactory`). On **DevNet** the settlement
+  leg uses real Canton-native tokens (cETH, cBTC, raUSD) whose contracts
+  already implement those interfaces from their own registries; this module
+  only exists so the same `Invoicing.daml` code path works in local dev and
+  the test suite without a live token registry. Zero invoice vocabulary in it.
 - **`Invoicing.daml`** -- the invoice-factoring domain logic, including the
   blind auction itself (`FinancingInvitation`/`Quote`). Its module header
   spells out the underlying pattern explicitly: a sealed-bid auction is just
@@ -30,21 +40,23 @@ The Daml model is split into two modules (`daml/main/daml/`):
   the blindness is enforced by Canton's stakeholder model itself, not by
   anything in this codebase.
 
+**Token-per-quote model:** each `Quote` carries the specific Splice token
+the Lender is offering (cETH, cBTC, or raUSD -- whatever they hold). The
+Supplier sees the token denomination on each incoming quote and picks the
+one they want to accept. Settlement transfers exactly that token atomically.
+On sandbox both Lenders are pre-seeded with cETH so the demo runs end-to-end
+without a wallet; on DevNet they use real holdings from the faucet.
+
 That shape is reusable for any blind-bid marketplace on Canton -- sealed-bid
 OTC quotes, M&A bid processes, reinsurance placement, supplier RFQs, other
 RWA auctions -- by writing a new Invitation/Bid pair with that asset's own
-fields and importing `Cash.daml` unchanged for the payment leg. What's
-specific to invoice factoring and wouldn't carry over automatically: the
-field names on the Invitation/Bid (`advanceRate`/`yieldBps` are this
-domain's terms), and the nested-authority settlement step
+fields and using the same Splice `Holding`/`TransferFactory` interfaces for
+the payment leg. What's specific to invoice factoring and wouldn't carry
+over automatically: the field names on the Invitation/Bid (`advanceRate`/
+`yieldBps` are this domain's terms), and the nested-authority settlement step
 (`PaymentObligation_Settle`) -- that part exists because a third party (the
 Buyer) needs to consent to reassigning who gets paid; a plain two-sided
-auction wouldn't need it at all. (If you wanted one engine spanning several
-asset classes at once rather than one new module per asset, Daml's
-`interface` construct -- a shared choice signature multiple templates can
-implement -- is the idiomatic way to get that; intentionally not built here,
-to keep this submission one focused, working product rather than a thinner
-multi-asset platform.)
+auction wouldn't need it at all.
 
 ## Quick start (Docker)
 
@@ -59,10 +71,10 @@ Then open **<http://localhost:8080>**.
 
 That's it. There are no manual setup steps after this: the frontend
 allocates the five demo parties (Alice/Bob/AlphaBank/BetaVentures/RegNode)
-and seeds each Lender with a CashHolding itself, the first time it loads
-against a fresh ledger (see "Self-healing party resolution" below). This
-works identically on a freshly built container as it does on a host machine
-that's never seen `dpm`.
+and seeds AlphaBank with 5 M simulated **cETH** and BetaVentures with
+3 M simulated **cBTC** the first time it loads against a fresh ledger (see
+"Self-healing party resolution" below). This works identically on a freshly
+built container as it does on a host machine that's never seen `dpm`.
 
 A few things worth knowing about the compose setup (see
 `docker-compose.yml`, `daml/Dockerfile`, `frontend/Dockerfile`):
@@ -93,7 +105,8 @@ Useful when actively editing the frontend.
 
 - Java, Node.js
 - `dpm` (Digital Asset Package Manager):
-  ```
+
+  ```bash
   curl -sSL https://get.digitalasset.com/install/install.sh | sh
   export PATH="$HOME/.dpm/bin:$PATH"
   ```
@@ -127,11 +140,23 @@ sandbox (see `vite.config.ts`) so there's no CORS configuration needed.
 Party IDs are **not** hardcoded anywhere in the frontend. On boot,
 `frontend/src/ledger/bootstrap.ts` lists known parties via
 `GET /v2/parties`, allocates any of the five demo parties that don't exist
-yet, and seeds each Lender with a `CashHolding` if they don't have one.
-This matters because Canton mints a fresh participant key -- and therefore
-a fresh party-ID fingerprint suffix -- on every fresh ledger boot (every
-`dpm sandbox` restart locally, or every fresh container in Docker). A
-hardcoded party ID would silently go stale on any restart; this doesn't.
+yet (Alice/Bob/AlphaBank/BetaVentures/RegNode), and in **sandbox mode**
+seeds each Lender with a `CashHolding` and a `CcxTransferFactory` if they
+don't have one yet. This matters because Canton mints a fresh participant
+key -- and therefore a fresh party-ID fingerprint suffix -- on every fresh
+ledger boot (every `dpm sandbox` restart locally, or every fresh container
+in Docker). A hardcoded party ID would silently go stale on any restart;
+this doesn't.
+
+**DevNet mode** (`VITE_REAL_TOKENS=true`): seeding is skipped. Lenders
+receive cETH, cBTC, or raUSD from the Canton Network faucet via their
+wallet, and those real token holdings and registry TransferFactory contracts
+are passed directly to the quote submission choice. Create a `.env.local`
+file in `frontend/` to enable it:
+
+```dotenv
+VITE_REAL_TOKENS=true
+```
 
 ## Regenerating the TypeScript bindings after a contract change
 
