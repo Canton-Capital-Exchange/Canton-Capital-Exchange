@@ -14,11 +14,10 @@ RUN curl -sSL https://get.digitalasset.com/install/install.sh | sh
 ENV PATH="/root/.dpm/bin:${PATH}"
 RUN dpm install 3.5.1
 
-WORKDIR /src
-COPY deps ./deps
-COPY main/daml.yaml ./main/daml.yaml
-COPY main/daml ./main/daml
 WORKDIR /src/main
+COPY main/daml.yaml ./
+COPY main/daml ./daml
+COPY deps /src/deps/
 RUN dpm build
 
 FROM eclipse-temurin:21-jre-jammy AS runtime
