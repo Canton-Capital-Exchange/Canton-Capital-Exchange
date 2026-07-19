@@ -11,6 +11,32 @@ import { AuditorDashboard } from "./dashboards/AuditorDashboard";
 import { USE_REAL_TOKENS } from "./ledger/config";
 import { initAuth, loginRedirect, logout, AUTH_MODE } from "./ledger/auth";
 import { setAuthToken } from "./ledger/http";
+import { useTxToast } from "./ledger/txStore";
+
+const EXPLORER = "https://lighthouse.devnet.cantonloop.com";
+
+function TxToast() {
+  const txId = useTxToast();
+  if (!txId) return null;
+  const short = `${txId.slice(0, 8)}…${txId.slice(-6)}`;
+  return (
+    <div className="fixed bottom-5 right-5 z-50 flex items-center gap-3 rounded-lg border border-emerald-800 bg-slate-950/95 px-4 py-3 shadow-xl backdrop-blur-sm text-xs animate-in slide-in-from-bottom-2">
+      <span className="h-2 w-2 rounded-full bg-emerald-400 shrink-0" />
+      <div>
+        <p className="text-slate-400 mb-0.5">On-chain · Canton DevNet</p>
+        <p className="font-mono text-slate-200">{short}</p>
+      </div>
+      <a
+        href={`${EXPLORER}/transactions/${txId}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="ml-2 text-indigo-400 hover:text-indigo-300 transition-colors whitespace-nowrap"
+      >
+        View ↗
+      </a>
+    </div>
+  );
+}
 
 function Dashboard({
   persona,
@@ -143,6 +169,7 @@ export default function App() {
       <PartiesProvider>
         <AppShell />
       </PartiesProvider>
+      <TxToast />
     </AuthGate>
   );
 }

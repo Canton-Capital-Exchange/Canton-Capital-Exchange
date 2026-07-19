@@ -3,6 +3,7 @@ import type { components } from "../generated/ledger-api";
 import { client, unwrap } from "./http";
 import { USE_REAL_TOKENS } from "./config";
 import { getStoredUserId } from "./auth";
+import { broadcastTx } from "./txStore";
 
 
 type Command = components["schemas"]["Command"];
@@ -44,7 +45,10 @@ async function submit(
       userId: USE_REAL_TOKENS ? getStoredUserId() : "ccx-app",
     },
   });
-  return unwrap(data, error);
+  const result = unwrap(data, error);
+  const txId = (result as Record<string, unknown>).updateId as string | undefined;
+  if (txId) broadcastTx(txId);
+  return result;
 }
 
 /**

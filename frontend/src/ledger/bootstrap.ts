@@ -3,7 +3,7 @@ import { client, unwrap } from "./http";
 import { fetchPersonaView } from "./client";
 import { PERSONA_META, PERSONA_ORDER, partyIdToPersona, type PersonaId } from "./parties";
 import { USE_REAL_TOKENS } from "./config";
-import { getStoredToken, getStoredUserId } from "./auth";
+import { getStoredToken, getStoredUserId, DEVNET_PARTICIPANT } from "./auth";
 
 export { USE_REAL_TOKENS };
 
@@ -62,9 +62,18 @@ async function grantActAs(partyId: string, userId: string): Promise<void> {
 }
 
 async function allocateDevNetParty(hint: string, userId: string): Promise<string> {
-  const partyId = await allocateParty(`ccx-${hint}`);
-  await grantActAs(partyId, userId);
-  return partyId;
+  try {
+    const partyId = await allocateParty(`ccx-${hint}`);
+    await grantActAs(partyId, userId);
+    return partyId;
+  } catch (e) {
+    // Party already exists on this participant (re-allocation returns 400).
+    // Construct the deterministic ID from the known participant fingerprint.
+    if (!DEVNET_PARTICIPANT) throw e;
+    const partyId = `ccx-${hint}::${DEVNET_PARTICIPANT}`;
+    await grantActAs(partyId, userId);
+    return partyId;
+  }
 }
 
 async function seedTransferFactory(admin: string, observers: string[], userId: string) {

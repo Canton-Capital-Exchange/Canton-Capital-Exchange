@@ -1,6 +1,9 @@
 const MODE        = import.meta.env.VITE_AUTH_MODE   as string | undefined;
 const DEVNET_PARTY = import.meta.env.VITE_DEVNET_PARTY as string | undefined;
 export const AUTH_MODE = MODE;
+// Participant fingerprint extracted from VITE_DEVNET_PARTY (the part after ::).
+// Used by bootstrap to construct deterministic DevNet party IDs.
+export const DEVNET_PARTICIPANT = DEVNET_PARTY?.split("::")[1];
 
 const TOKEN_KEY    = "ccx_token";
 const PARTY_KEY    = "ccx_party";

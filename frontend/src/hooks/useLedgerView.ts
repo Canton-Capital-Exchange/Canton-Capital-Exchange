@@ -17,6 +17,7 @@ export function useLedgerView(partyId: string) {
   const generation = useRef(0);
 
   const refresh = useCallback(async () => {
+    if (!partyId) return;
     const myGeneration = generation.current;
     setPending(true);
     try {
