@@ -1,6 +1,9 @@
 import { Cash, Invoicing } from "@daml.js/daml-main-0.0.1";
 import type { components } from "../generated/ledger-api";
 import { client, unwrap } from "./http";
+import { USE_REAL_TOKENS } from "./config";
+import { getStoredUserId } from "./auth";
+
 
 type Command = components["schemas"]["Command"];
 type CreatedEvent = components["schemas"]["CreatedEvent"];
@@ -38,7 +41,7 @@ async function submit(
       commandId,
       actAs,
       readAs,
-      userId: "ccx-app",
+      userId: USE_REAL_TOKENS ? getStoredUserId() : "ccx-app",
     },
   });
   return unwrap(data, error);
@@ -76,6 +79,59 @@ async function queryActiveContracts(party: string): Promise<CreatedEvent[]> {
   return events;
 }
 
+// Maps DevNet token holdings from wildcard events to the CashHolding payload shape.
+// The Canton JSON API on the hackathon DevNet doesn't support InterfaceFilter, so we
+// match by template module path and map each known token type's fields manually.
+function extractRealHoldings(events: CreatedEvent[], party: string): LedgerContract<Cash.CashHolding>[] {
+  const results: LedgerContract<Cash.CashHolding>[] = [];
+
+  for (const ev of events) {
+    const tid = ev.templateId ?? "";
+    const arg = ev.createArgument as Record<string, unknown>;
+
+    // CC (Canton Coin / Amulet) — Splice.Amulet:Amulet
+    if (tid.endsWith(":Splice.Amulet:Amulet") && arg.owner === party) {
+      const amt = arg.amount as { initialAmount: string };
+      results.push({
+        contractId: ev.contractId,
+        templateId: tid,
+        payload: {
+          owner: arg.owner as string,
+          admin: arg.dso as string,
+          currency: "CC",
+          amount: amt.initialAmount,
+        } as Cash.CashHolding,
+      });
+    }
+
+    // Utility Registry holdings (cBTC, cETH) — Utility.Registry.Holding.V0.Holding:Holding
+    if (tid.endsWith(":Utility.Registry.Holding.V0.Holding:Holding") && arg.owner === party) {
+      const instrument = arg.instrument as { source: string; id: string };
+      results.push({
+        contractId: ev.contractId,
+        templateId: tid,
+        payload: {
+          owner: arg.owner as string,
+          admin: instrument.source,
+          currency: instrument.id,
+          amount: arg.amount as string,
+        } as Cash.CashHolding,
+      });
+    }
+  }
+
+  return results;
+}
+
+// TransferFactory contracts aren't visible from a regular user party on this DevNet.
+// When the CCX DAR is deployed and USE_REAL_TOKENS=false, CcxTransferFactory is seeded
+// by bootstrap and found via byTemplate. When USE_REAL_TOKENS=true with real Amulet/
+// Utility.Registry tokens, the factory CID comes from the holding's associated registry —
+// we surface whatever CcxTransferFactory contracts are visible as a fallback.
+function extractRealTransferFactories(events: CreatedEvent[]): LedgerContract<Cash.CcxTransferFactory>[] {
+  return byTemplate<Cash.CcxTransferFactory>(events, "Cash", "CcxTransferFactory");
+}
+
 function byTemplate<T>(events: CreatedEvent[], moduleName: string, templateName: string): LedgerContract<T>[] {
   return events
     .filter((e) => e.templateId.endsWith(`:${moduleName}:${templateName}`))
@@ -99,6 +155,7 @@ export interface PersonaView {
 
 export async function fetchPersonaView(party: string): Promise<PersonaView> {
   const events = await queryActiveContracts(party);
+
   return {
     invoiceDrafts: byTemplate(events, "Invoicing", "InvoiceDraft"),
     verifiedInvoices: byTemplate(events, "Invoicing", "VerifiedInvoice"),
@@ -106,8 +163,12 @@ export async function fetchPersonaView(party: string): Promise<PersonaView> {
     financingInvitations: byTemplate(events, "Invoicing", "FinancingInvitation"),
     quotes: byTemplate(events, "Invoicing", "Quote"),
     fundedInvoices: byTemplate(events, "Invoicing", "FundedInvoice"),
-    cashHoldings: byTemplate<Cash.CashHolding>(events, "Cash", "CashHolding").filter(c => c.payload.owner === party),
-    transferFactories: byTemplate(events, "Cash", "CcxTransferFactory"),
+    cashHoldings: USE_REAL_TOKENS
+      ? extractRealHoldings(events, party)
+      : byTemplate<Cash.CashHolding>(events, "Cash", "CashHolding").filter(c => c.payload.owner === party),
+    transferFactories: USE_REAL_TOKENS
+      ? extractRealTransferFactories(events)
+      : byTemplate(events, "Cash", "CcxTransferFactory"),
   };
 }
 

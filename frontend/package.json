@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:netlify": "node scripts/gen-redirects.js && tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
     "generate:api": "openapi-typescript http://localhost:7575/docs/openapi -o src/generated/ledger-api.d.ts"

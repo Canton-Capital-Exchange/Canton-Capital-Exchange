@@ -2,10 +2,10 @@ import { Cash } from "@daml.js/daml-main-0.0.1";
 import { client, unwrap } from "./http";
 import { fetchPersonaView } from "./client";
 import { PERSONA_META, PERSONA_ORDER, partyIdToPersona, type PersonaId } from "./parties";
+import { USE_REAL_TOKENS } from "./config";
+import { getStoredParty } from "./auth";
 
-// Set VITE_REAL_TOKENS=true when running against DevNet with real cETH/raUSD.
-// Skips CashHolding+CcxTransferFactory seeding; lenders fund via the wallet faucet instead.
-export const USE_REAL_TOKENS = import.meta.env.VITE_REAL_TOKENS === "true";
+export { USE_REAL_TOKENS };
 
 const LENDER_SEED_CASH: Partial<Record<PersonaId, Array<{ amount: string; currency: string }>>> = {
   lenderA: [
@@ -65,14 +65,21 @@ async function seedTransferFactory(admin: string, observers: string[]) {
 }
 
 /**
- * Resolves the five demo parties by hint, allocating any that don't exist
- * yet, then ensures each Lender has at least one CashHolding to bid with.
- * This makes the whole app self-healing against a freshly booted sandbox --
- * whether that's a local `dpm sandbox` restart or a fresh Docker container
- * with no persisted participant state -- without any party ID ever being
- * hardcoded in source.
+ * On DevNet: all personas share the single logged-in party (no allocation needed).
+ * On sandbox: resolves/allocates the five demo parties and seeds lender cash holdings.
  */
 export async function resolveParties(): Promise<Record<PersonaId, string>> {
+  if (USE_REAL_TOKENS) {
+    const party = getStoredParty();
+    if (!party) throw new Error("No party resolved — auth must complete before resolveParties()");
+    const result = {} as Record<PersonaId, string>;
+    for (const id of PERSONA_ORDER) {
+      result[id] = party;
+      partyIdToPersona.set(party, PERSONA_META[id]);
+    }
+    return result;
+  }
+
   const known = await listKnownParties();
   const result = {} as Record<PersonaId, string>;
 
@@ -85,22 +92,17 @@ export async function resolveParties(): Promise<Record<PersonaId, string>> {
     partyIdToPersona.set(partyId, meta);
   }
 
-  if (!USE_REAL_TOKENS) {
-    const allParties = Object.values(result);
-    for (const [id, seeds] of Object.entries(LENDER_SEED_CASH) as [PersonaId, Array<{ amount: string; currency: string }>][]) {
-      const partyId = result[id];
-      const view = await fetchPersonaView(partyId);
-      if (view.cashHoldings.length === 0) {
-        await seedTransferFactory(partyId, allParties);
-        for (const seed of seeds) {
-          await seedCashHolding(partyId, seed.amount, seed.currency);
-        }
+  const allParties = Object.values(result);
+  for (const [id, seeds] of Object.entries(LENDER_SEED_CASH) as [PersonaId, Array<{ amount: string; currency: string }>][]) {
+    const partyId = result[id];
+    const view = await fetchPersonaView(partyId);
+    if (view.cashHoldings.length === 0) {
+      await seedTransferFactory(partyId, allParties);
+      for (const seed of seeds) {
+        await seedCashHolding(partyId, seed.amount, seed.currency);
       }
     }
   }
-  // On DevNet (USE_REAL_TOKENS=true): lenders receive cETH/raUSD via the
-  // hackathon wallet faucet. Holdings and TransferFactory contracts come
-  // from the real Splice token registries -- no seeding needed here.
 
   return result;
 }

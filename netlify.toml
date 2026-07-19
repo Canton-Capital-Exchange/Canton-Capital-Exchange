@@ -1,29 +1,41 @@
 [build]
   base    = "frontend"
   publish = "dist"
-  command = "npm run build"
+  command = "npm run build:netlify"
   # Only rebuild when frontend source actually changes -- ignores Daml, Docker, README edits
   ignore  = "git diff --quiet HEAD^ HEAD -- frontend/"
 
 [build.environment]
   NODE_VERSION = "20"
 
+[functions]
+  directory = "netlify/functions"
+
 # ---------------------------------------------------------------------------
-# DevNet proxy — update `to` with the Canton JSON Ledger API URL once the
-# organizers deploy the DAR, then redeploy on Netlify. Netlify rewrites the
-# request server-side so the browser never sees a cross-origin request.
+# DevNet proxy — generated at build time by scripts/gen-redirects.js.
+# The /v2/* rule in public/_redirects proxies to the Canton JSON Ledger API
+# configured in the LEDGER_URL build env var.
 #
-# Example (replace with real URL when known):
-#   to = "https://hackcanton-01.devnet.naas.noders.services/v2/:splat"
+# ── hackcanton-01 env vars (set in Netlify UI) ──────────────────────────────
+#   LEDGER_URL                  = https://ledger-api-json.participant.hackcanton-01.devnet.naas.noders.services
+#   VITE_REAL_TOKENS            = true
+#   VITE_AUTH_MODE              = keycloak
+#   VITE_KEYCLOAK_URL           = https://keycloak.hackcanton-01.devnet.naas.noders.services/realms/canton-network
+#   VITE_KEYCLOAK_CLIENT_ID     = web-app-ui-hackcanton-01-devnet
 #
-# Also set these env vars in the Netlify UI before redeploying for DevNet:
-#   VITE_REAL_TOKENS = true
+# ── Encode / FiveNorth env vars (set in Netlify UI) ─────────────────────────
+#   LEDGER_URL                  = https://ledger-api.validator.devnet.sandbox.fivenorth.io
+#   VITE_REAL_TOKENS            = true
+#   VITE_AUTH_MODE              = client_credentials
+#   AUTH_TOKEN_URL              = https://auth.sandbox.fivenorth.io/application/o/token/
+#   AUTH_CLIENT_ID              = validator-devnet-m2m
+#   AUTH_CLIENT_SECRET          = <secret>          ← server-side only, no VITE_ prefix
+#   AUTH_AUDIENCE               = validator-devnet-m2m
+#   AUTH_SCOPE                  = daml_ledger_api
+#
+# Note: AUTH_* vars are consumed by the m2m-token Netlify Function only.
+# The client secret never appears in the JS bundle.
 # ---------------------------------------------------------------------------
-[[redirects]]
-  from   = "/v2/*"
-  to     = "https://DEVNET_LEDGER_URL_HERE/v2/:splat"
-  status = 200
-  force  = true
 
 # SPA fallback — all unmatched paths serve the React app
 [[redirects]]
