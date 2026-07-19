@@ -164,7 +164,10 @@ export async function fetchPersonaView(party: string): Promise<PersonaView> {
     quotes: byTemplate(events, "Invoicing", "Quote"),
     fundedInvoices: byTemplate(events, "Invoicing", "FundedInvoice"),
     cashHoldings: USE_REAL_TOKENS
-      ? extractRealHoldings(events, party)
+      ? [
+          ...extractRealHoldings(events, party),
+          ...byTemplate<Cash.CashHolding>(events, "Cash", "CashHolding").filter(c => c.payload.owner === party),
+        ]
       : byTemplate<Cash.CashHolding>(events, "Cash", "CashHolding").filter(c => c.payload.owner === party),
     transferFactories: USE_REAL_TOKENS
       ? extractRealTransferFactories(events)

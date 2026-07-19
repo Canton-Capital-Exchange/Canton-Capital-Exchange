@@ -3,7 +3,7 @@ import { client, unwrap } from "./http";
 import { fetchPersonaView } from "./client";
 import { PERSONA_META, PERSONA_ORDER, partyIdToPersona, type PersonaId } from "./parties";
 import { USE_REAL_TOKENS } from "./config";
-import { getStoredParty } from "./auth";
+import { getStoredParty, getStoredUserId } from "./auth";
 
 export { USE_REAL_TOKENS };
 
@@ -30,7 +30,7 @@ async function allocateParty(hint: string): Promise<string> {
   return unwrap(data, error).partyDetails.party;
 }
 
-async function seedCashHolding(owner: string, amount: string, currency: string) {
+async function seedCashHolding(owner: string, amount: string, currency: string, userId: string) {
   await client.POST("/v2/commands/submit-and-wait", {
     body: {
       commands: [{
@@ -42,12 +42,12 @@ async function seedCashHolding(owner: string, amount: string, currency: string) 
       commandId: `seed-cash-${crypto.randomUUID()}`,
       actAs: [owner],
       readAs: [owner],
-      userId: "ccx-app",
+      userId,
     },
   });
 }
 
-async function seedTransferFactory(admin: string, observers: string[]) {
+async function seedTransferFactory(admin: string, observers: string[], userId: string) {
   await client.POST("/v2/commands/submit-and-wait", {
     body: {
       commands: [{
@@ -59,7 +59,7 @@ async function seedTransferFactory(admin: string, observers: string[]) {
       commandId: `seed-factory-${crypto.randomUUID()}`,
       actAs: [admin],
       readAs: [],
-      userId: "ccx-app",
+      userId,
     },
   });
 }
@@ -69,6 +69,8 @@ async function seedTransferFactory(admin: string, observers: string[]) {
  * On sandbox: resolves/allocates the five demo parties and seeds lender cash holdings.
  */
 export async function resolveParties(): Promise<Record<PersonaId, string>> {
+  const userId = getStoredUserId();
+
   if (USE_REAL_TOKENS) {
     const party = getStoredParty();
     if (!party) throw new Error("No party resolved — auth must complete before resolveParties()");
@@ -76,6 +78,16 @@ export async function resolveParties(): Promise<Record<PersonaId, string>> {
     for (const id of PERSONA_ORDER) {
       result[id] = party;
       partyIdToPersona.set(party, PERSONA_META[id]);
+    }
+    // Seed demo holdings for the machine party if not yet present
+    const view = await fetchPersonaView(party);
+    if (view.cashHoldings.length === 0) {
+      await seedTransferFactory(party, [party], userId);
+      for (const seeds of Object.values(LENDER_SEED_CASH)) {
+        for (const seed of seeds) {
+          await seedCashHolding(party, seed.amount, seed.currency, userId);
+        }
+      }
     }
     return result;
   }
@@ -97,9 +109,9 @@ export async function resolveParties(): Promise<Record<PersonaId, string>> {
     const partyId = result[id];
     const view = await fetchPersonaView(partyId);
     if (view.cashHoldings.length === 0) {
-      await seedTransferFactory(partyId, allParties);
+      await seedTransferFactory(partyId, allParties, userId);
       for (const seed of seeds) {
-        await seedCashHolding(partyId, seed.amount, seed.currency);
+        await seedCashHolding(partyId, seed.amount, seed.currency, userId);
       }
     }
   }

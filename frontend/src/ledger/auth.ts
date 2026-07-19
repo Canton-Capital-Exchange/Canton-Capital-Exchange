@@ -1,4 +1,5 @@
-const MODE = import.meta.env.VITE_AUTH_MODE as string | undefined;
+const MODE        = import.meta.env.VITE_AUTH_MODE   as string | undefined;
+const DEVNET_PARTY = import.meta.env.VITE_DEVNET_PARTY as string | undefined;
 export const AUTH_MODE = MODE;
 
 const TOKEN_KEY    = "ccx_token";
@@ -76,8 +77,18 @@ async function resolveParty(token: string, sub: string): Promise<string> {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`Party resolution failed: ${res.status}`);
-  const body = await res.json() as { actAsGrants?: { party: string }[] };
-  return body.actAsGrants?.[0]?.party ?? "";
+  const body = await res.json() as {
+    actAsGrants?: { party: string }[];
+    rights?: { kind?: { CanActAs?: { value?: { party?: string } } } }[];
+  };
+  // Canton JSON API v2 (some nodes): {actAsGrants: [{party}]}
+  if (body.actAsGrants?.[0]?.party) return body.actAsGrants[0].party;
+  // FiveNorth / alternate format: {rights: [{kind: {CanActAs: {value: {party}}}}]}
+  for (const r of body.rights ?? []) {
+    const p = r.kind?.CanActAs?.value?.party;
+    if (p) return p;
+  }
+  return "";
 }
 
 function storeSession(token: string, expiresIn: number, party: string, userId: string) {
@@ -105,8 +116,10 @@ export async function initAuth(
       return "authed";
     }
     const { token, expiresIn } = await fetchMachineToken();
-    const sub   = decodeSub(token);
-    const party = await resolveParty(token, sub);
+    const sub = decodeSub(token);
+    // VITE_DEVNET_PARTY overrides resolution — needed when the machine account
+    // can act as many parties (shared sandbox) and we want a specific one.
+    const party = DEVNET_PARTY ?? await resolveParty(token, sub);
     storeSession(token, expiresIn, party, sub);
     setToken(token);
     return "authed";
