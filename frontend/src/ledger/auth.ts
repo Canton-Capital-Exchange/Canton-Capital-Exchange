@@ -98,6 +98,7 @@ function storeSession(token: string, expiresIn: number, party: string, userId: s
   sessionStorage.setItem(USER_KEY,   userId);
 }
 
+export function getStoredToken():  string { return sessionStorage.getItem(TOKEN_KEY)  ?? ""; }
 export function getStoredParty(): string  { return sessionStorage.getItem(PARTY_KEY)  ?? ""; }
 export function getStoredUserId(): string { return sessionStorage.getItem(USER_KEY)   ?? "ccx-app"; }
 

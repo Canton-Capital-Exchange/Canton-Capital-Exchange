@@ -3,7 +3,7 @@ import { client, unwrap } from "./http";
 import { fetchPersonaView } from "./client";
 import { PERSONA_META, PERSONA_ORDER, partyIdToPersona, type PersonaId } from "./parties";
 import { USE_REAL_TOKENS } from "./config";
-import { getStoredParty, getStoredUserId } from "./auth";
+import { getStoredToken, getStoredUserId } from "./auth";
 
 export { USE_REAL_TOKENS };
 
@@ -47,6 +47,26 @@ async function seedCashHolding(owner: string, amount: string, currency: string, 
   });
 }
 
+// Grants CanActAs for partyId to userId on the DevNet ledger (idempotent).
+async function grantActAs(partyId: string, userId: string): Promise<void> {
+  const token = getStoredToken();
+  if (!token) return;
+  await fetch(`/v2/users/${encodeURIComponent(userId)}/rights`, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId,
+      rights: [{ kind: { CanActAs: { value: { party: partyId } } } }],
+    }),
+  });
+}
+
+async function allocateDevNetParty(hint: string, userId: string): Promise<string> {
+  const partyId = await allocateParty(`ccx-${hint}`);
+  await grantActAs(partyId, userId);
+  return partyId;
+}
+
 async function seedTransferFactory(admin: string, observers: string[], userId: string) {
   await client.POST("/v2/commands/submit-and-wait", {
     body: {
@@ -65,27 +85,38 @@ async function seedTransferFactory(admin: string, observers: string[], userId: s
 }
 
 /**
- * On DevNet: all personas share the single logged-in party (no allocation needed).
+ * On DevNet: allocates one ccx-prefixed party per persona, grants CanActAs to the machine user,
+ * and seeds lender cash holdings — same privacy model as sandbox.
  * On sandbox: resolves/allocates the five demo parties and seeds lender cash holdings.
  */
 export async function resolveParties(): Promise<Record<PersonaId, string>> {
   const userId = getStoredUserId();
 
   if (USE_REAL_TOKENS) {
-    const party = getStoredParty();
-    if (!party) throw new Error("No party resolved — auth must complete before resolveParties()");
+    // Allocate one party per persona (ccx- prefix avoids collisions on shared DevNet).
+    // grantActAs is idempotent so re-running on refresh is safe.
+    const known = await listKnownParties();
     const result = {} as Record<PersonaId, string>;
+
     for (const id of PERSONA_ORDER) {
-      result[id] = party;
-      partyIdToPersona.set(party, PERSONA_META[id]);
+      const meta = PERSONA_META[id];
+      const prefix = `ccx-${meta.hint}::`;
+      const existing = known.find((p) => p.startsWith(prefix));
+      const partyId = existing
+        ? (await grantActAs(existing, userId), existing)
+        : await allocateDevNetParty(meta.hint, userId);
+      result[id] = partyId;
+      partyIdToPersona.set(partyId, meta);
     }
-    // Seed demo holdings for the machine party if not yet present
-    const view = await fetchPersonaView(party);
-    if (view.cashHoldings.length === 0) {
-      await seedTransferFactory(party, [party], userId);
-      for (const seeds of Object.values(LENDER_SEED_CASH)) {
+
+    const allParties = Object.values(result);
+    for (const [id, seeds] of Object.entries(LENDER_SEED_CASH) as [PersonaId, Array<{ amount: string; currency: string }>][]) {
+      const partyId = result[id];
+      const view = await fetchPersonaView(partyId);
+      if (view.cashHoldings.length === 0) {
+        await seedTransferFactory(partyId, allParties, userId);
         for (const seed of seeds) {
-          await seedCashHolding(party, seed.amount, seed.currency, userId);
+          await seedCashHolding(partyId, seed.amount, seed.currency, userId);
         }
       }
     }
